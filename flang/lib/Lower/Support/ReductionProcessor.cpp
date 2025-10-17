@@ -573,10 +573,15 @@ OpType ReductionProcessor::createDeclareReduction(
 
   mlir::OpBuilder modBuilder(module.getBodyRegion());
   mlir::Type valTy = fir::unwrapRefType(type);
+  mlir::TypeAttr boxedTy{};
+
   if (!isByRef)
     type = valTy;
 
-  decl = OpType::create(modBuilder, loc, reductionOpName, type);
+  if (isByRef)
+    boxedTy = mlir::TypeAttr::get(fir::unwrapPassByRefType(valTy));
+
+  decl = OpType::create(modBuilder, loc, reductionOpName, type, boxedTy);
   createReductionAllocAndInitRegions(converter, loc, decl, redId, type,
                                      isByRef);
 
