@@ -13,6 +13,7 @@
 #ifndef LLVM_CLANG_PARSE_PARSER_H
 #define LLVM_CLANG_PARSE_PARSER_H
 
+#include "clang/Basic/OpenACCKinds.h"
 #include "clang/Basic/OperatorPrecedence.h"
 #include "clang/Lex/CodeCompletionHandler.h"
 #include "clang/Lex/Preprocessor.h"
@@ -40,6 +41,7 @@ namespace clang {
   class InMessageExpressionRAIIObject;
   class PoisonSEHIdentifiersRAIIObject;
   class OMPClause;
+  class OpenACCClause;
   class ObjCTypeParamList;
   struct OMPTraitProperty;
   struct OMPTraitSelector;
@@ -53,6 +55,7 @@ namespace clang {
 class Parser : public CodeCompletionHandler {
   friend class ColonProtectionRAIIObject;
   friend class ParsingOpenMPDirectiveRAII;
+  friend class ParsingOpenACCDirectiveRAII;
   friend class InMessageExpressionRAIIObject;
   friend class OffsetOfStateRAIIObject;
   friend class PoisonSEHIdentifiersRAIIObject;
@@ -175,6 +178,7 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> FPContractHandler;
   std::unique_ptr<PragmaHandler> OpenCLExtensionHandler;
   std::unique_ptr<PragmaHandler> OpenMPHandler;
+  std::unique_ptr<PragmaHandler> OpenACCHandler;
   std::unique_ptr<PragmaHandler> PCSectionHandler;
   std::unique_ptr<PragmaHandler> MSCommentHandler;
   std::unique_ptr<PragmaHandler> MSDetectMismatchHandler;
@@ -228,6 +232,29 @@ class Parser : public CodeCompletionHandler {
 
   /// Parsing OpenMP directive mode.
   bool OpenMPDirectiveParsing = false;
+
+  /// Parsing OpenACC directive mode.
+  bool OpenACCDirectiveParsing = false;
+
+  /// Currently parsing a situation where an OpenACC array section could be
+  /// legal, such as a 'var-list'.
+  bool AllowOpenACCArraySections = false;
+
+  /// RAII object to set reset OpenACC parsing a context where Array Sections
+  /// are allowed.
+  class OpenACCArraySectionRAII {
+    Parser &P;
+
+  public:
+    OpenACCArraySectionRAII(Parser &P) : P(P) {
+      assert(!P.AllowOpenACCArraySections);
+      P.AllowOpenACCArraySections = true;
+    }
+    ~OpenACCArraySectionRAII() {
+      assert(P.AllowOpenACCArraySections);
+      P.AllowOpenACCArraySections = false;
+    }
+  };
 
   /// When true, we are directly inside an Objective-C message
   /// send expression.
@@ -3522,6 +3549,128 @@ public:
   /// map([ [map-type-modifier[,] [map-type-modifier[,] ...] map-type : ] list)
   /// where, map-type-modifier ::= always | close | mapper(mapper-identifier)
   bool parseMapTypeModifiers(Sema::OpenMPVarListDataTy &Data);
+
+  //===--------------------------------------------------------------------===//
+  // OpenACC Parsing.
+
+  /// Placeholder for now, should just ignore the directives after emitting a
+  /// diagnostic. Eventually will be split into a few functions to parse
+  /// different situations.
+public:
+  DeclGroupPtrTy ParseOpenACCDirectiveDecl();
+  StmtResult ParseOpenACCDirectiveStmt();
+
+private:
+  /// A struct to hold the information that got parsed by ParseOpenACCDirective,
+  /// so that the callers of it can use that to construct the appropriate AST
+  /// nodes.
+  struct OpenACCDirectiveParseInfo {
+    OpenACCDirectiveKind DirKind;
+    SourceLocation StartLoc;
+    SourceLocation DirLoc;
+    SourceLocation EndLoc;
+    SmallVector<OpenACCClause *> Clauses;
+    // TODO OpenACC: As we implement support for the Atomic, Routine, Cache, and
+    // Wait constructs, we likely want to put that information in here as well.
+  };
+
+  struct OpenACCWaitParseInfo {
+    bool Failed = false;
+    Expr *DevNumExpr = nullptr;
+    SourceLocation QueuesLoc;
+    SmallVector<Expr *> QueueIdExprs;
+  };
+
+  /// Represents the 'error' state of parsing an OpenACC Clause, and stores
+  /// whether we can continue parsing, or should give up on the directive.
+  enum class OpenACCParseCanContinue { Cannot = 0, Can = 1 };
+
+  /// A type to represent the state of parsing an OpenACC Clause. Situations
+  /// that result in an OpenACCClause pointer are a success and can continue
+  /// parsing, however some other situations can also continue.
+  /// FIXME: This is better represented as a std::expected when we get C++23.
+  using OpenACCClauseParseResult =
+      llvm::PointerIntPair<OpenACCClause *, 1, OpenACCParseCanContinue>;
+
+  OpenACCClauseParseResult OpenACCCanContinue();
+  OpenACCClauseParseResult OpenACCCannotContinue();
+  OpenACCClauseParseResult OpenACCSuccess(OpenACCClause *Clause);
+
+  /// Parses the OpenACC directive (the entire pragma) including the clause
+  /// list, but does not produce the main AST node.
+  OpenACCDirectiveParseInfo ParseOpenACCDirective();
+  /// Helper that parses an ID Expression based on the language options.
+  ExprResult ParseOpenACCIDExpression();
+  /// Parses the variable list for the `cache` construct.
+  void ParseOpenACCCacheVarList();
+
+  using OpenACCVarParseResult = std::pair<ExprResult, OpenACCParseCanContinue>;
+  /// Parses a single variable in a variable list for OpenACC.
+  OpenACCVarParseResult ParseOpenACCVar(OpenACCClauseKind CK);
+  /// Parses the variable list for the variety of places that take a var-list.
+  llvm::SmallVector<Expr *> ParseOpenACCVarList(OpenACCClauseKind CK);
+  /// Parses any parameters for an OpenACC Clause, including required/optional
+  /// parens.
+  OpenACCClauseParseResult
+  ParseOpenACCClauseParams(ArrayRef<const OpenACCClause *> ExistingClauses,
+                           OpenACCDirectiveKind DirKind, OpenACCClauseKind Kind,
+                           SourceLocation ClauseLoc);
+  /// Parses a single clause in a clause-list for OpenACC. Returns nullptr on
+  /// error.
+  OpenACCClauseParseResult
+  ParseOpenACCClause(ArrayRef<const OpenACCClause *> ExistingClauses,
+                     OpenACCDirectiveKind DirKind);
+  /// Parses the clause-list for an OpenACC directive.
+  SmallVector<OpenACCClause *>
+  ParseOpenACCClauseList(OpenACCDirectiveKind DirKind);
+  OpenACCWaitParseInfo ParseOpenACCWaitArgument(SourceLocation Loc,
+                                                bool IsDirective);
+  /// Parses the clause of the 'bind' argument, which can be a string literal or
+  /// an ID expression.
+  ExprResult ParseOpenACCBindClauseArgument();
+
+  /// A type to represent the state of parsing after an attempt to parse an
+  /// OpenACC int-expr. This is useful to determine whether an int-expr list can
+  /// continue parsing after a failed int-expr.
+  using OpenACCIntExprParseResult =
+      std::pair<ExprResult, OpenACCParseCanContinue>;
+  /// Parses the clause kind of 'int-expr', which can be any integral
+  /// expression.
+  OpenACCIntExprParseResult ParseOpenACCIntExpr(OpenACCDirectiveKind DK,
+                                                OpenACCClauseKind CK,
+                                                SourceLocation Loc);
+  /// Parses the argument list for 'num_gangs', which allows up to 3
+  /// 'int-expr's.
+  bool ParseOpenACCIntExprList(OpenACCDirectiveKind DK, OpenACCClauseKind CK,
+                               SourceLocation Loc,
+                               llvm::SmallVectorImpl<Expr *> &IntExprs);
+  /// Parses the 'device-type-list', which is a list of identifiers.
+  bool ParseOpenACCDeviceTypeList(
+      llvm::SmallVector<std::pair<IdentifierInfo *, SourceLocation>> &Archs);
+  /// Parses the 'async-argument', which is an integral value with two
+  /// 'special' values that are likely negative (but come from Macros).
+  OpenACCIntExprParseResult ParseOpenACCAsyncArgument(OpenACCDirectiveKind DK,
+                                                      OpenACCClauseKind CK,
+                                                      SourceLocation Loc);
+
+  /// Parses the 'size-expr', which is an integral value, or an asterisk.
+  /// Asterisk is represented by a OpenACCAsteriskSizeExpr
+  ExprResult ParseOpenACCSizeExpr(OpenACCClauseKind CK);
+  /// Parses a comma delimited list of 'size-expr's.
+  bool ParseOpenACCSizeExprList(OpenACCClauseKind CK,
+                                llvm::SmallVectorImpl<Expr *> &SizeExprs);
+  /// Parses a 'gang-arg-list', used for the 'gang' clause.
+  bool ParseOpenACCGangArgList(SourceLocation GangLoc,
+                               llvm::SmallVectorImpl<OpenACCGangKind> &GKs,
+                               llvm::SmallVectorImpl<Expr *> &IntExprs);
+
+  using OpenACCGangArgRes = std::pair<OpenACCGangKind, ExprResult>;
+  /// Parses a 'gang-arg', used for the 'gang' clause. Returns a pair of the
+  /// ExprResult (which contains the validity of the expression), plus the gang
+  /// kind for the current argument.
+  OpenACCGangArgRes ParseOpenACCGangArg(SourceLocation GangLoc);
+  /// Parses a 'condition' expr, ensuring it results in a
+  ExprResult ParseOpenACCConditionExpr();
 
 private:
   //===--------------------------------------------------------------------===//

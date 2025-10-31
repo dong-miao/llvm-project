@@ -30,6 +30,7 @@
 #include "clang/Sema/EnterExpressionEvaluationContext.h"
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
+#include "clang/Sema/SemaOpenACC.h"
 #include "clang/Sema/TypoCorrection.h"
 #include "llvm/ADT/SmallVector.h"
 #include <optional>
@@ -1958,10 +1959,11 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       PreferredType.enterSubscript(Actions, Tok.getLocation(), LHS.get());
 
       // We try to parse a list of indexes in all language mode first
-      // and, in we find 0 or one index, we try to parse an OpenMP array
+      // and, in we find 0 or one index, we try to parse an OpenMP/OpenACC array
       // section. This allow us to support C++23 multi dimensional subscript and
-      // OpenMp sections in the same language mode.
-      if (!getLangOpts().OpenMP || Tok.isNot(tok::colon)) {
+      // OpenMP/OpenACC sections in the same language mode.
+      if ((!getLangOpts().OpenMP && !AllowOpenACCArraySections) ||
+          Tok.isNot(tok::colon)) {
         if (!getLangOpts().CPlusPlus23) {
           ExprResult Idx;
           if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
@@ -1985,7 +1987,19 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         }
       }
 
-      if (ArgExprs.size() <= 1 && getLangOpts().OpenMP) {
+      // Handle OpenACC first, since 'AllowOpenACCArraySections' is only enabled
+      // when actively parsing a 'var' in a 'var-list' during clause/'cache'
+      // parsing, so it is the most specific, and best allows us to handle
+      // OpenACC and OpenMP at the same time.
+      if (ArgExprs.size() <= 1 && AllowOpenACCArraySections) {
+        ColonProtectionRAIIObject RAII(*this);
+        if (Tok.is(tok::colon)) {
+          // Consume ':'
+          ColonLocFirst = ConsumeToken();
+          if (Tok.isNot(tok::r_square))
+            Length = Actions.CorrectDelayedTyposInExpr(ParseExpression());
+        }
+      } else if (ArgExprs.size() <= 1 && getLangOpts().OpenMP) {
         ColonProtectionRAIIObject RAII(*this);
         if (Tok.is(tok::colon)) {
           // Consume ':'
@@ -2015,9 +2029,17 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       if (!LHS.isInvalid() && !HasError && !Length.isInvalid() &&
           !Stride.isInvalid() && Tok.is(tok::r_square)) {
         if (ColonLocFirst.isValid() || ColonLocSecond.isValid()) {
-          LHS = Actions.ActOnOMPArraySectionExpr(
-              LHS.get(), Loc, ArgExprs.empty() ? nullptr : ArgExprs[0],
-              ColonLocFirst, ColonLocSecond, Length.get(), Stride.get(), RLoc);
+          // Like above, AllowOpenACCArraySections is 'more specific' and only
+          // enabled when actively parsing a 'var' in a 'var-list' during
+          // clause/'cache' construct parsing, so it is more specific. So we
+          // should do it first, so that the correct node gets created.
+          if (AllowOpenACCArraySections) {
+            assert(!Stride.isUsable() && !ColonLocSecond.isValid() &&
+                   "Stride/second colon not allowed for OpenACC");
+            LHS = Actions.OpenACC().ActOnArraySectionExpr(
+                LHS.get(), Loc, ArgExprs.empty() ? nullptr : ArgExprs[0],
+                ColonLocFirst, Length.get(), RLoc);
+          }
         } else {
           LHS = Actions.ActOnArraySubscriptExpr(getCurScope(), LHS.get(), Loc,
                                                 ArgExprs, RLoc);

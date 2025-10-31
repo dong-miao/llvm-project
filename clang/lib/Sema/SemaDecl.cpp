@@ -7018,8 +7018,7 @@ static void checkAttributesAfterMerging(Sema &S, NamedDecl &ND) {
   if (WeakRefAttr *Attr = ND.getAttr<WeakRefAttr>()) {
     if (ND.isExternallyVisible()) {
       S.Diag(Attr->getLocation(), diag::err_attribute_weakref_not_static);
-      ND.dropAttr<WeakRefAttr>();
-      ND.dropAttr<AliasAttr>();
+      ND.dropAttrs<WeakRefAttr, AliasAttr>();
     }
   }
 
@@ -10414,12 +10413,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           << SourceRange(TemplateId->LAngleLoc, TemplateId->RAngleLoc);
 
         HasExplicitTemplateArgs = false;
-      } else {
-        assert((isFunctionTemplateSpecialization ||
-                D.getDeclSpec().isFriendSpecified()) &&
-               "should have a 'template<>' for this decl");
+      } else if (isFriend) {
         // "friend void foo<>(int);" is an implicit specialization decl.
         isFunctionTemplateSpecialization = true;
+      } else {
+        assert(isFunctionTemplateSpecialization &&
+               "should have a 'template<>' for this decl");
       }
     } else if (isFriend && isFunctionTemplateSpecialization) {
       // This combination is only possible in a recovery case;  the user

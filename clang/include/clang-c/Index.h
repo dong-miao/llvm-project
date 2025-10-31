@@ -1645,7 +1645,8 @@ enum CXCursorKind {
 
   /** OpenMP 5.0 [2.1.5, Array Section].
    */
-  CXCursor_OMPArraySectionExpr = 147,
+  CXCursor_OMPArraySectionExpr = 1470,
+  CXCursor_ArraySectionExpr = 147,
 
   /** Represents an @available(...) check.
    */
@@ -2140,7 +2141,17 @@ enum CXCursorKind {
    */
   CXCursor_OMPScopeDirective = 306,
 
-  CXCursor_LastStmt = CXCursor_OMPScopeDirective,
+  /** OpenACC Compute Construct.
+   */
+  CXCursor_OpenACCComputeConstruct = 320,
+
+  /** OpenACC Loop Construct.
+   */
+  CXCursor_OpenACCLoopConstruct = 321,
+
+  CXCursor_OpenACCCombinedConstruct = 322,
+
+  CXCursor_LastStmt = CXCursor_OpenACCCombinedConstruct,
 
   /**
    * Cursor that represents the translation unit itself.

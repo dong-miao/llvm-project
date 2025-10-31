@@ -4619,6 +4619,7 @@ recurse:
   case Expr::TypoExprClass: // This should no longer exist in the AST by now.
   case Expr::RecoveryExprClass:
   case Expr::OMPArraySectionExprClass:
+  case Expr::ArraySectionExprClass:
   case Expr::OMPArrayShapingExprClass:
   case Expr::OMPIteratorExprClass:
   case Expr::CXXInheritedCtorInitExprClass:
@@ -5559,6 +5560,15 @@ recurse:
 
     Out << "E";
     break;
+  }
+    case Expr::OpenACCAsteriskSizeExprClass: {
+    // We shouldn't ever be able to get here, but diagnose anyway.
+    DiagnosticsEngine &Diags = Context.getDiags();
+    unsigned DiagID = Diags.getCustomDiagID(
+        DiagnosticsEngine::Error,
+        "cannot yet mangle OpenACC Asterisk Size expression");
+    Diags.Report(DiagID);
+    return;
   }
   }
 

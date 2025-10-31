@@ -11211,6 +11211,13 @@ public:
     return Success(E->getValue(), E);
   }
 
+  bool VisitOpenACCAsteriskSizeExpr(const OpenACCAsteriskSizeExpr *E) {
+    // This should not be evaluated during constant expr evaluation, as it
+    // should always be in an unevaluated context (the args list of a 'gang' or
+    // 'tile' clause).
+    return Error(E);
+  }
+
   bool VisitUnaryReal(const UnaryOperator *E);
   bool VisitUnaryImag(const UnaryOperator *E);
 
@@ -15753,6 +15760,7 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
   case Expr::ArraySubscriptExprClass:
   case Expr::MatrixSubscriptExprClass:
   case Expr::OMPArraySectionExprClass:
+  case Expr::ArraySectionExprClass:
   case Expr::OMPArrayShapingExprClass:
   case Expr::OMPIteratorExprClass:
   case Expr::MemberExprClass:
@@ -15846,6 +15854,7 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
   case Expr::SizeOfPackExprClass:
   case Expr::GNUNullExprClass:
   case Expr::SourceLocExprClass:
+  case Expr::OpenACCAsteriskSizeExprClass:
     return NoDiag();
 
   case Expr::SubstNonTypeTemplateParmExprClass:

@@ -17406,6 +17406,15 @@ void Sema::CheckArrayAccess(const Expr *expr) {
                            /*ASE=*/nullptr, AllowOnePastEnd > 0);
         return;
       }
+      case Stmt::ArraySectionExprClass: {
+        const ArraySectionExpr *ASE = cast<ArraySectionExpr>(expr);
+        // FIXME: We should probably be checking all of the elements to the
+        // 'length' here as well.
+        if (ASE->getLowerBound())
+          CheckArrayAccess(ASE->getBase(), ASE->getLowerBound(),
+                           /*ASE=*/nullptr, AllowOnePastEnd > 0);
+        return;
+      }
       case Stmt::UnaryOperatorClass: {
         // Only unwrap the * and & unary operators
         const UnaryOperator *UO = cast<UnaryOperator>(expr);

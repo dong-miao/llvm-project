@@ -981,7 +981,10 @@ enum PredefinedTypeIDs {
   PREDEF_TYPE_RESERVE_ID_ID = 41,
 
   /// The placeholder type for OpenMP array section.
-  PREDEF_TYPE_OMP_ARRAY_SECTION = 42,
+  PREDEF_TYPE_OMP_ARRAY_SECTION = 7895,
+
+  /// The placeholder type for an array section.
+  PREDEF_TYPE_ARRAY_SECTION = 42,
 
   /// The '__float128' type
   PREDEF_TYPE_FLOAT128_ID = 43,
@@ -2005,6 +2008,7 @@ enum StmtCode {
   STMT_OMP_PARALLEL_GENERIC_LOOP_DIRECTIVE,
   STMT_OMP_TARGET_PARALLEL_GENERIC_LOOP_DIRECTIVE,
   EXPR_OMP_ARRAY_SECTION,
+  EXPR_ARRAY_SECTION,
   EXPR_OMP_ARRAY_SHAPING,
   EXPR_OMP_ITERATOR,
 
@@ -2024,6 +2028,12 @@ enum StmtCode {
 
   // SYCLUniqueStableNameExpr
   EXPR_SYCL_UNIQUE_STABLE_NAME,
+
+  // OpenACC Constructs/Exprs
+  STMT_OPENACC_COMPUTE_CONSTRUCT,
+  STMT_OPENACC_LOOP_CONSTRUCT,
+  STMT_OPENACC_COMBINED_CONSTRUCT,
+  EXPR_OPENACC_ASTERISK_SIZE,
 };
 
 /// The kinds of designators that can occur in a

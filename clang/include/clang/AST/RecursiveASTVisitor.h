@@ -30,10 +30,12 @@
 #include "clang/AST/ExprOpenMP.h"
 #include "clang/AST/LambdaCapture.h"
 #include "clang/AST/NestedNameSpecifier.h"
+#include "clang/AST/OpenACCClause.h"
 #include "clang/AST/OpenMPClause.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
+#include "clang/AST/StmtOpenACC.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
@@ -505,6 +507,11 @@ private:
   bool VisitOMPClauseWithPostUpdate(OMPClauseWithPostUpdate *Node);
 
   bool PostVisitStmt(Stmt *S);
+  bool TraverseOpenACCConstructStmt(OpenACCConstructStmt *S);
+  bool
+  TraverseOpenACCAssociatedStmtConstruct(OpenACCAssociatedStmtConstruct *S);
+  bool VisitOpenACCClauseList(ArrayRef<const OpenACCClause *>);
+  bool VisitOpenACCClause(const OpenACCClause *);
 };
 
 template <typename Derived>
@@ -2712,6 +2719,7 @@ DEF_TRAVERSE_STMT(AddrLabelExpr, {})
 DEF_TRAVERSE_STMT(ArraySubscriptExpr, {})
 DEF_TRAVERSE_STMT(MatrixSubscriptExpr, {})
 DEF_TRAVERSE_STMT(OMPArraySectionExpr, {})
+DEF_TRAVERSE_STMT(ArraySectionExpr, {})
 DEF_TRAVERSE_STMT(OMPArrayShapingExpr, {})
 DEF_TRAVERSE_STMT(OMPIteratorExpr, {})
 
@@ -2807,6 +2815,7 @@ DEF_TRAVERSE_STMT(ParenListExpr, {})
 DEF_TRAVERSE_STMT(SYCLUniqueStableNameExpr, {
   TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
 })
+DEF_TRAVERSE_STMT(OpenACCAsteriskSizeExpr, {})
 DEF_TRAVERSE_STMT(PredefinedExpr, {})
 DEF_TRAVERSE_STMT(ShuffleVectorExpr, {})
 DEF_TRAVERSE_STMT(ConvertVectorExpr, {})
@@ -3889,6 +3898,44 @@ bool RecursiveASTVisitor<Derived>::VisitOMPXAttributeClause(
     OMPXAttributeClause *C) {
   return true;
 }
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseOpenACCConstructStmt(
+    OpenACCConstructStmt *C) {
+  TRY_TO(VisitOpenACCClauseList(C->clauses()));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseOpenACCAssociatedStmtConstruct(
+    OpenACCAssociatedStmtConstruct *S) {
+  TRY_TO(TraverseOpenACCConstructStmt(S));
+  TRY_TO(TraverseStmt(S->getAssociatedStmt()));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOpenACCClause(const OpenACCClause *C) {
+  for (const Stmt *Child : C->children())
+    TRY_TO(TraverseStmt(const_cast<Stmt *>(Child)));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOpenACCClauseList(
+    ArrayRef<const OpenACCClause *> Clauses) {
+
+  for (const auto *C : Clauses)
+    TRY_TO(VisitOpenACCClause(C));
+  return true;
+}
+
+DEF_TRAVERSE_STMT(OpenACCComputeConstruct,
+                  { TRY_TO(TraverseOpenACCAssociatedStmtConstruct(S)); })
+DEF_TRAVERSE_STMT(OpenACCLoopConstruct,
+                  { TRY_TO(TraverseOpenACCAssociatedStmtConstruct(S)); })
+DEF_TRAVERSE_STMT(OpenACCCombinedConstruct,
+                  { TRY_TO(TraverseOpenACCAssociatedStmtConstruct(S)); })
 
 // FIXME: look at the following tricky-seeming exprs to see if we
 // need to recurse on anything.  These are ones that have methods

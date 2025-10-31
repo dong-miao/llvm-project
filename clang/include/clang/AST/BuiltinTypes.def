@@ -321,6 +321,7 @@ PLACEHOLDER_TYPE(IncompleteMatrixIdx, IncompleteMatrixIdxTy)
 
 // A placeholder type for OpenMP array sections.
 PLACEHOLDER_TYPE(OMPArraySection, OMPArraySectionTy)
+PLACEHOLDER_TYPE(ArraySection, ArraySectionTy)
 
 // A placeholder type for OpenMP array shaping operation.
 PLACEHOLDER_TYPE(OMPArrayShaping, OMPArrayShapingTy)

@@ -185,6 +185,8 @@ public:
 
   void Visit(const OMPClause *C);
 
+  void Visit(const OpenACCClause *C);
+
   void Visit(const BlockDecl::Capture &C);
 
   void Visit(const GenericSelectionExpr::ConstAssociation &A);
@@ -391,6 +393,10 @@ public:
   void
   VisitLifetimeExtendedTemporaryDecl(const LifetimeExtendedTemporaryDecl *D);
   void VisitHLSLBufferDecl(const HLSLBufferDecl *D);
+  void VisitOpenACCConstructStmt(const OpenACCConstructStmt *S);
+  void VisitOpenACCLoopConstruct(const OpenACCLoopConstruct *S);
+  void VisitOpenACCCombinedConstruct(const OpenACCCombinedConstruct *S);
+  void VisitOpenACCAsteriskSizeExpr(const OpenACCAsteriskSizeExpr *S);
 };
 
 } // namespace clang

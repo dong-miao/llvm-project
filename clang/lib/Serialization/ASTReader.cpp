@@ -32,6 +32,7 @@
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/ODRDiagsEmitter.h"
 #include "clang/AST/ODRHash.h"
+#include "clang/AST/OpenACCClause.h"
 #include "clang/AST/OpenMPClause.h"
 #include "clang/AST/RawCommentList.h"
 #include "clang/AST/TemplateBase.h"
@@ -53,6 +54,7 @@
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/ObjCRuntime.h"
+#include "clang/Basic/OpenACCKinds.h"
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/PragmaKinds.h"
@@ -1731,6 +1733,8 @@ Token ASTReader::ReadToken(ModuleFile &F, const RecordDataImpl &Record,
     case tok::annot_pragma_openmp:
     case tok::annot_pragma_openmp_end:
     case tok::annot_pragma_unused:
+    case tok::annot_pragma_openacc:
+    case tok::annot_pragma_openacc_end:
       break;
     default:
       llvm_unreachable("missing deserialization code for annotation token");
@@ -7270,6 +7274,9 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_OMP_ARRAY_SECTION:
       T = Context.OMPArraySectionTy;
       break;
+    case PREDEF_TYPE_ARRAY_SECTION:
+      T = Context.ArraySectionTy;
+      break;
     case PREDEF_TYPE_OMP_ARRAY_SHAPING:
       T = Context.OMPArraySectionTy;
       break;
@@ -11579,4 +11586,245 @@ void ASTRecordReader::readOMPChildren(OMPChildren *Data) {
     Data->setAssociatedStmt(readStmt());
   for (unsigned I = 0, E = Data->getNumChildren(); I < E; ++I)
     Data->getChildren()[I] = readStmt();
+}
+
+SmallVector<Expr *> ASTRecordReader::readOpenACCVarList() {
+  unsigned NumVars = readInt();
+  llvm::SmallVector<Expr *> VarList;
+  for (unsigned I = 0; I < NumVars; ++I)
+    VarList.push_back(readSubExpr());
+  return VarList;
+}
+
+SmallVector<Expr *> ASTRecordReader::readOpenACCIntExprList() {
+  unsigned NumExprs = readInt();
+  llvm::SmallVector<Expr *> ExprList;
+  for (unsigned I = 0; I < NumExprs; ++I)
+    ExprList.push_back(readSubExpr());
+  return ExprList;
+}
+
+OpenACCClause *ASTRecordReader::readOpenACCClause() {
+  OpenACCClauseKind ClauseKind = readEnum<OpenACCClauseKind>();
+  SourceLocation BeginLoc = readSourceLocation();
+  SourceLocation EndLoc = readSourceLocation();
+
+  switch (ClauseKind) {
+  case OpenACCClauseKind::Default: {
+    SourceLocation LParenLoc = readSourceLocation();
+    OpenACCDefaultClauseKind DCK = readEnum<OpenACCDefaultClauseKind>();
+    return OpenACCDefaultClause::Create(getContext(), DCK, BeginLoc, LParenLoc,
+                                        EndLoc);
+  }
+  case OpenACCClauseKind::If: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *CondExpr = readSubExpr();
+    return OpenACCIfClause::Create(getContext(), BeginLoc, LParenLoc, CondExpr,
+                                   EndLoc);
+  }
+  case OpenACCClauseKind::Self: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *CondExpr = readBool() ? readSubExpr() : nullptr;
+    return OpenACCSelfClause::Create(getContext(), BeginLoc, LParenLoc,
+                                     CondExpr, EndLoc);
+  }
+  case OpenACCClauseKind::NumGangs: {
+    SourceLocation LParenLoc = readSourceLocation();
+    unsigned NumClauses = readInt();
+    llvm::SmallVector<Expr *> IntExprs;
+    for (unsigned I = 0; I < NumClauses; ++I)
+      IntExprs.push_back(readSubExpr());
+    return OpenACCNumGangsClause::Create(getContext(), BeginLoc, LParenLoc,
+                                         IntExprs, EndLoc);
+  }
+  case OpenACCClauseKind::NumWorkers: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *IntExpr = readSubExpr();
+    return OpenACCNumWorkersClause::Create(getContext(), BeginLoc, LParenLoc,
+                                           IntExpr, EndLoc);
+  }
+  case OpenACCClauseKind::VectorLength: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *IntExpr = readSubExpr();
+    return OpenACCVectorLengthClause::Create(getContext(), BeginLoc, LParenLoc,
+                                             IntExpr, EndLoc);
+  }
+  case OpenACCClauseKind::Private: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCPrivateClause::Create(getContext(), BeginLoc, LParenLoc,
+                                        VarList, EndLoc);
+  }
+  case OpenACCClauseKind::FirstPrivate: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCFirstPrivateClause::Create(getContext(), BeginLoc, LParenLoc,
+                                             VarList, EndLoc);
+  }
+  case OpenACCClauseKind::Attach: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCAttachClause::Create(getContext(), BeginLoc, LParenLoc,
+                                       VarList, EndLoc);
+  }
+  case OpenACCClauseKind::DevicePtr: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCDevicePtrClause::Create(getContext(), BeginLoc, LParenLoc,
+                                          VarList, EndLoc);
+  }
+  case OpenACCClauseKind::NoCreate: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCNoCreateClause::Create(getContext(), BeginLoc, LParenLoc,
+                                         VarList, EndLoc);
+  }
+  case OpenACCClauseKind::Present: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCPresentClause::Create(getContext(), BeginLoc, LParenLoc,
+                                        VarList, EndLoc);
+  }
+  case OpenACCClauseKind::PCopy:
+  case OpenACCClauseKind::PresentOrCopy:
+  case OpenACCClauseKind::Copy: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCCopyClause::Create(getContext(), ClauseKind, BeginLoc,
+                                     LParenLoc, VarList, EndLoc);
+  }
+  case OpenACCClauseKind::CopyIn:
+  case OpenACCClauseKind::PCopyIn:
+  case OpenACCClauseKind::PresentOrCopyIn: {
+    SourceLocation LParenLoc = readSourceLocation();
+    bool IsReadOnly = readBool();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCCopyInClause::Create(getContext(), ClauseKind, BeginLoc,
+                                       LParenLoc, IsReadOnly, VarList, EndLoc);
+  }
+  case OpenACCClauseKind::CopyOut:
+  case OpenACCClauseKind::PCopyOut:
+  case OpenACCClauseKind::PresentOrCopyOut: {
+    SourceLocation LParenLoc = readSourceLocation();
+    bool IsZero = readBool();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCCopyOutClause::Create(getContext(), ClauseKind, BeginLoc,
+                                        LParenLoc, IsZero, VarList, EndLoc);
+  }
+  case OpenACCClauseKind::Create:
+  case OpenACCClauseKind::PCreate:
+  case OpenACCClauseKind::PresentOrCreate: {
+    SourceLocation LParenLoc = readSourceLocation();
+    bool IsZero = readBool();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCCreateClause::Create(getContext(), ClauseKind, BeginLoc,
+                                       LParenLoc, IsZero, VarList, EndLoc);
+  }
+  case OpenACCClauseKind::Async: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *AsyncExpr = readBool() ? readSubExpr() : nullptr;
+    return OpenACCAsyncClause::Create(getContext(), BeginLoc, LParenLoc,
+                                      AsyncExpr, EndLoc);
+  }
+  case OpenACCClauseKind::Wait: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *DevNumExpr = readBool() ? readSubExpr() : nullptr;
+    SourceLocation QueuesLoc = readSourceLocation();
+    llvm::SmallVector<Expr *> QueueIdExprs = readOpenACCIntExprList();
+    return OpenACCWaitClause::Create(getContext(), BeginLoc, LParenLoc,
+                                     DevNumExpr, QueuesLoc, QueueIdExprs,
+                                     EndLoc);
+  }
+  case OpenACCClauseKind::DeviceType:
+  case OpenACCClauseKind::DType: {
+    SourceLocation LParenLoc = readSourceLocation();
+    llvm::SmallVector<DeviceTypeArgument> Archs;
+    unsigned NumArchs = readInt();
+
+    for (unsigned I = 0; I < NumArchs; ++I) {
+      IdentifierInfo *Ident = readBool() ? readIdentifier() : nullptr;
+      SourceLocation Loc = readSourceLocation();
+      Archs.emplace_back(Ident, Loc);
+    }
+
+    return OpenACCDeviceTypeClause::Create(getContext(), ClauseKind, BeginLoc,
+                                           LParenLoc, Archs, EndLoc);
+  }
+  case OpenACCClauseKind::Reduction: {
+    SourceLocation LParenLoc = readSourceLocation();
+    OpenACCReductionOperator Op = readEnum<OpenACCReductionOperator>();
+    llvm::SmallVector<Expr *> VarList = readOpenACCVarList();
+    return OpenACCReductionClause::Create(getContext(), BeginLoc, LParenLoc, Op,
+                                          VarList, EndLoc);
+  }
+  case OpenACCClauseKind::Seq:
+    return OpenACCSeqClause::Create(getContext(), BeginLoc, EndLoc);
+  case OpenACCClauseKind::Independent:
+    return OpenACCIndependentClause::Create(getContext(), BeginLoc, EndLoc);
+  case OpenACCClauseKind::Auto:
+    return OpenACCAutoClause::Create(getContext(), BeginLoc, EndLoc);
+  case OpenACCClauseKind::Collapse: {
+    SourceLocation LParenLoc = readSourceLocation();
+    bool HasForce = readBool();
+    Expr *LoopCount = readSubExpr();
+    return OpenACCCollapseClause::Create(getContext(), BeginLoc, LParenLoc,
+                                         HasForce, LoopCount, EndLoc);
+  }
+  case OpenACCClauseKind::Tile: {
+    SourceLocation LParenLoc = readSourceLocation();
+    unsigned NumClauses = readInt();
+    llvm::SmallVector<Expr *> SizeExprs;
+    for (unsigned I = 0; I < NumClauses; ++I)
+      SizeExprs.push_back(readSubExpr());
+    return OpenACCTileClause::Create(getContext(), BeginLoc, LParenLoc,
+                                     SizeExprs, EndLoc);
+  }
+  case OpenACCClauseKind::Gang: {
+    SourceLocation LParenLoc = readSourceLocation();
+    unsigned NumExprs = readInt();
+    llvm::SmallVector<OpenACCGangKind> GangKinds;
+    llvm::SmallVector<Expr *> Exprs;
+    for (unsigned I = 0; I < NumExprs; ++I) {
+      GangKinds.push_back(readEnum<OpenACCGangKind>());
+      Exprs.push_back(readSubExpr());
+    }
+    return OpenACCGangClause::Create(getContext(), BeginLoc, LParenLoc,
+                                     GangKinds, Exprs, EndLoc);
+  }
+  case OpenACCClauseKind::Worker: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *WorkerExpr = readBool() ? readSubExpr() : nullptr;
+    return OpenACCWorkerClause::Create(getContext(), BeginLoc, LParenLoc,
+                                       WorkerExpr, EndLoc);
+  }
+  case OpenACCClauseKind::Vector: {
+    SourceLocation LParenLoc = readSourceLocation();
+    Expr *VectorExpr = readBool() ? readSubExpr() : nullptr;
+    return OpenACCVectorClause::Create(getContext(), BeginLoc, LParenLoc,
+                                       VectorExpr, EndLoc);
+  }
+
+  case OpenACCClauseKind::Finalize:
+  case OpenACCClauseKind::IfPresent:
+  case OpenACCClauseKind::NoHost:
+  case OpenACCClauseKind::UseDevice:
+  case OpenACCClauseKind::Delete:
+  case OpenACCClauseKind::Detach:
+  case OpenACCClauseKind::Device:
+  case OpenACCClauseKind::DeviceResident:
+  case OpenACCClauseKind::Host:
+  case OpenACCClauseKind::Link:
+  case OpenACCClauseKind::Bind:
+  case OpenACCClauseKind::DeviceNum:
+  case OpenACCClauseKind::DefaultAsync:
+  case OpenACCClauseKind::Invalid:
+    llvm_unreachable("Clause serialization not yet implemented");
+  }
+  llvm_unreachable("Invalid Clause Kind");
+}
+
+void ASTRecordReader::readOpenACCClauseList(
+    MutableArrayRef<const OpenACCClause *> Clauses) {
+  for (unsigned I = 0; I < Clauses.size(); ++I)
+    Clauses[I] = readOpenACCClause();
 }

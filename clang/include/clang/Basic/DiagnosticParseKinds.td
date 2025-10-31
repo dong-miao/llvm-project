@@ -1342,6 +1342,31 @@ def err_opencl_logical_exclusive_or : Error<
 def err_openclcxx_virtual_function : Error<
   "virtual functions are not supported in C++ for OpenCL">;
 
+// OpenACC Support.
+def warn_pragma_acc_ignored
+    : Warning<"unexpected '#pragma acc ...' in program">,
+      InGroup<SourceUsesOpenACC>,
+      DefaultIgnore;
+def err_acc_unexpected_directive
+    : Error<"unexpected OpenACC directive %select{|'#pragma acc %1'}0">;
+def err_acc_invalid_directive
+    : Error<"invalid OpenACC directive %select{%1|'%1 %2'}0">;
+def err_acc_invalid_clause : Error<"invalid OpenACC clause %0">;
+def err_acc_missing_directive : Error<"expected OpenACC directive">;
+def err_acc_invalid_open_paren
+    : Error<"expected clause-list or newline in OpenACC directive">;
+def err_acc_invalid_default_clause_kind
+    : Error<"invalid value for 'default' clause; expected 'present' or 'none'">;
+def err_acc_invalid_tag_kind
+    : Error<"invalid tag %0 on '%1' %select{directive|clause}2">;
+def err_acc_expected_reduction_operator
+    : Error<"missing reduction operator, expected '+', '*', 'max', 'min', '&', "
+            "'|', '^', '&&', or '||', follwed by a ':'">;
+def err_acc_invalid_reduction_operator
+    : Error<"invalid reduction operator,  expected '+', '*', 'max', 'min', "
+            "'&', '|', '^', '&&', or '||'">;
+def err_acc_incorrect_bind_arg : Error<"expected identifier or string literal">;
+
 // OpenMP support.
 def warn_pragma_omp_ignored : Warning<
   "unexpected '#pragma omp ...' in program">, InGroup<SourceUsesOpenMP>, DefaultIgnore;

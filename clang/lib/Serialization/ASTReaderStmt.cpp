@@ -565,6 +565,11 @@ void ASTStmtReader::VisitConstantExpr(ConstantExpr *E) {
   E->setSubExpr(Record.readSubExpr());
 }
 
+void ASTStmtReader::VisitOpenACCAsteriskSizeExpr(OpenACCAsteriskSizeExpr *E) {
+  VisitExpr(E);
+  E->setAsteriskLocation(readSourceLocation());
+}
+
 void ASTStmtReader::VisitSYCLUniqueStableNameExpr(SYCLUniqueStableNameExpr *E) {
   VisitExpr(E);
 
@@ -948,6 +953,16 @@ void ASTStmtReader::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   E->setStride(Record.readSubExpr());
   E->setColonLocFirst(readSourceLocation());
   E->setColonLocSecond(readSourceLocation());
+  E->setRBracketLoc(readSourceLocation());
+}
+
+void ASTStmtReader::VisitArraySectionExpr(ArraySectionExpr *E) {
+  VisitExpr(E);
+  E->ASType = Record.readEnum<ArraySectionExpr::ArraySectionType>();
+  E->setBase(Record.readSubExpr());
+  E->setLowerBound(Record.readSubExpr());
+  E->setLength(Record.readSubExpr());
+  E->setColonLocFirst(readSourceLocation());
   E->setRBracketLoc(readSourceLocation());
 }
 
@@ -2730,6 +2745,39 @@ void ASTStmtReader::VisitOMPTargetParallelGenericLoopDirective(
 }
 
 //===----------------------------------------------------------------------===//
+// OpenACC Constructs/Directives.
+//===----------------------------------------------------------------------===//
+void ASTStmtReader::VisitOpenACCConstructStmt(OpenACCConstructStmt *S) {
+  (void)Record.readInt();
+  S->Kind = Record.readEnum<OpenACCDirectiveKind>();
+  S->Range = Record.readSourceRange();
+  S->DirectiveLoc = Record.readSourceLocation();
+  Record.readOpenACCClauseList(S->Clauses);
+}
+
+void ASTStmtReader::VisitOpenACCAssociatedStmtConstruct(
+    OpenACCAssociatedStmtConstruct *S) {
+  VisitOpenACCConstructStmt(S);
+  S->setAssociatedStmt(Record.readSubStmt());
+}
+
+void ASTStmtReader::VisitOpenACCComputeConstruct(OpenACCComputeConstruct *S) {
+  VisitStmt(S);
+  VisitOpenACCAssociatedStmtConstruct(S);
+}
+
+void ASTStmtReader::VisitOpenACCLoopConstruct(OpenACCLoopConstruct *S) {
+  VisitStmt(S);
+  VisitOpenACCAssociatedStmtConstruct(S);
+  S->ParentComputeConstructKind = Record.readEnum<OpenACCDirectiveKind>();
+}
+
+void ASTStmtReader::VisitOpenACCCombinedConstruct(OpenACCCombinedConstruct *S) {
+  VisitStmt(S);
+  VisitOpenACCAssociatedStmtConstruct(S);
+}
+
+//===----------------------------------------------------------------------===//
 // ASTReader Implementation
 //===----------------------------------------------------------------------===//
 
@@ -2931,6 +2979,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = SYCLUniqueStableNameExpr::CreateEmpty(Context);
       break;
 
+    case EXPR_OPENACC_ASTERISK_SIZE:
+      S = OpenACCAsteriskSizeExpr::CreateEmpty(Context);
+      break;
+
     case EXPR_PREDEFINED:
       S = PredefinedExpr::CreateEmpty(
           Context,
@@ -3012,6 +3064,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_OMP_ARRAY_SECTION:
       S = new (Context) OMPArraySectionExpr(Empty);
+      break;
+
+    case EXPR_ARRAY_SECTION:
+      S = new (Context) ArraySectionExpr(Empty);
       break;
 
     case EXPR_OMP_ARRAY_SHAPING:
@@ -4078,15 +4134,29 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = new (Context) ConceptSpecializationExpr(Empty);
       break;
     }
-
-    case EXPR_REQUIRES:
+    case STMT_OPENACC_COMPUTE_CONSTRUCT: {
+      unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
+      S = OpenACCComputeConstruct::CreateEmpty(Context, NumClauses);
+      break;
+    }
+    case STMT_OPENACC_LOOP_CONSTRUCT: {
+      unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
+      S = OpenACCLoopConstruct::CreateEmpty(Context, NumClauses);
+      break;
+    }
+    case STMT_OPENACC_COMBINED_CONSTRUCT: {
+      unsigned NumClauses = Record[ASTStmtReader::NumStmtFields];
+      S = OpenACCCombinedConstruct::CreateEmpty(Context, NumClauses);
+      break;
+    }
+    case EXPR_REQUIRES: {
       unsigned numLocalParameters = Record[ASTStmtReader::NumExprFields];
       unsigned numRequirement = Record[ASTStmtReader::NumExprFields + 1];
       S = RequiresExpr::Create(Context, Empty, numLocalParameters,
                                numRequirement);
       break;
     }
-
+  }
     // We hit a STMT_STOP, so we're done with this expression.
     if (Finished)
       break;

@@ -427,6 +427,15 @@ ExprDependence clang::computeDependence(OMPArraySectionExpr *E) {
   return D;
 }
 
+ExprDependence clang::computeDependence(ArraySectionExpr *E) {
+  auto D = E->getBase()->getDependence();
+  if (auto *LB = E->getLowerBound())
+    D |= LB->getDependence();
+  if (auto *Len = E->getLength())
+    D |= Len->getDependence();
+  return D;
+}
+
 ExprDependence clang::computeDependence(OMPArrayShapingExpr *E) {
   auto D = E->getBase()->getDependence();
   for (Expr *Dim: E->getDimensions())
@@ -907,4 +916,10 @@ ExprDependence clang::computeDependence(ObjCMessageExpr *E) {
   for (auto *A : E->arguments())
     D |= A->getDependence();
   return D;
+}
+
+ExprDependence clang::computeDependence(OpenACCAsteriskSizeExpr *E) {
+  // This represents a simple asterisk as typed, so cannot be dependent in any
+  // way.
+  return ExprDependence::None;
 }

@@ -26,6 +26,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
+#include "clang/AST/StmtOpenACC.h"
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/ABI.h"
@@ -3766,6 +3767,29 @@ private:
   void EmitSections(const OMPExecutableDirective &S);
 
 public:
+  //===--------------------------------------------------------------------===//
+  //                         OpenACC Emission
+  //===--------------------------------------------------------------------===//
+  void EmitOpenACCComputeConstruct(const OpenACCComputeConstruct &S) {
+    // TODO OpenACC: Implement this.  It is currently implemented as a 'no-op',
+    // simply emitting its structured block, but in the future we will implement
+    // some sort of IR.
+    EmitStmt(S.getStructuredBlock());
+  }
+
+  void EmitOpenACCLoopConstruct(const OpenACCLoopConstruct &S) {
+    // TODO OpenACC: Implement this.  It is currently implemented as a 'no-op',
+    // simply emitting its loop, but in the future we will implement
+    // some sort of IR.
+    EmitStmt(S.getLoop());
+  }
+
+  void EmitOpenACCCombinedConstruct(const OpenACCCombinedConstruct &S) {
+    // TODO OpenACC: Implement this.  It is currently implemented as a 'no-op',
+    // simply emitting its loop, but in the future we will implement
+    // some sort of IR.
+    EmitStmt(S.getLoop());
+  }
 
   //===--------------------------------------------------------------------===//
   //                         LValue Expression Emission
@@ -3954,6 +3978,8 @@ public:
   LValue EmitMatrixSubscriptExpr(const MatrixSubscriptExpr *E);
   LValue EmitOMPArraySectionExpr(const OMPArraySectionExpr *E,
                                  bool IsLowerBound = true);
+  LValue EmitArraySectionExpr(const ArraySectionExpr *E,
+                              bool IsLowerBound = true);
   LValue EmitExtVectorElementExpr(const ExtVectorElementExpr *E);
   LValue EmitMemberExpr(const MemberExpr *E);
   LValue EmitObjCIsaExpr(const ObjCIsaExpr *E);

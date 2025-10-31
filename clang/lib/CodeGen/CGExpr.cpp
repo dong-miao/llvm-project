@@ -1400,6 +1400,8 @@ LValue CodeGenFunction::EmitLValueHelper(const Expr *E,
     return EmitMatrixSubscriptExpr(cast<MatrixSubscriptExpr>(E));
   case Expr::OMPArraySectionExprClass:
     return EmitOMPArraySectionExpr(cast<OMPArraySectionExpr>(E));
+  case Expr::ArraySectionExprClass:
+    return EmitArraySectionExpr(cast<ArraySectionExpr>(E));
   case Expr::ExtVectorElementExprClass:
     return EmitExtVectorElementExpr(cast<ExtVectorElementExpr>(E));
   case Expr::CXXThisExprClass:
@@ -3988,6 +3990,169 @@ static Address emitOMPArraySectionBase(CodeGenFunction &CGF, const Expr *Base,
 LValue CodeGenFunction::EmitOMPArraySectionExpr(const OMPArraySectionExpr *E,
                                                 bool IsLowerBound) {
   QualType BaseTy = OMPArraySectionExpr::getBaseOriginalType(E->getBase());
+  QualType ResultExprTy;
+  if (auto *AT = getContext().getAsArrayType(BaseTy))
+    ResultExprTy = AT->getElementType();
+  else
+    ResultExprTy = BaseTy->getPointeeType();
+  llvm::Value *Idx = nullptr;
+  if (IsLowerBound || E->getColonLocFirst().isInvalid()) {
+    // Requesting lower bound or upper bound, but without provided length and
+    // without ':' symbol for the default length -> length = 1.
+    // Idx = LowerBound ?: 0;
+    if (auto *LowerBound = E->getLowerBound()) {
+      Idx = Builder.CreateIntCast(
+          EmitScalarExpr(LowerBound), IntPtrTy,
+          LowerBound->getType()->hasSignedIntegerRepresentation());
+    } else
+      Idx = llvm::ConstantInt::getNullValue(IntPtrTy);
+  } else {
+    // Try to emit length or lower bound as constant. If this is possible, 1
+    // is subtracted from constant length or lower bound. Otherwise, emit LLVM
+    // IR (LB + Len) - 1.
+    auto &C = CGM.getContext();
+    auto *Length = E->getLength();
+    llvm::APSInt ConstLength;
+    if (Length) {
+      // Idx = LowerBound + Length - 1;
+      if (std::optional<llvm::APSInt> CL = Length->getIntegerConstantExpr(C)) {
+        ConstLength = CL->zextOrTrunc(PointerWidthInBits);
+        Length = nullptr;
+      }
+      auto *LowerBound = E->getLowerBound();
+      llvm::APSInt ConstLowerBound(PointerWidthInBits, /*isUnsigned=*/false);
+      if (LowerBound) {
+        if (std::optional<llvm::APSInt> LB =
+                LowerBound->getIntegerConstantExpr(C)) {
+          ConstLowerBound = LB->zextOrTrunc(PointerWidthInBits);
+          LowerBound = nullptr;
+        }
+      }
+      if (!Length)
+        --ConstLength;
+      else if (!LowerBound)
+        --ConstLowerBound;
+
+      if (Length || LowerBound) {
+        auto *LowerBoundVal =
+            LowerBound
+                ? Builder.CreateIntCast(
+                      EmitScalarExpr(LowerBound), IntPtrTy,
+                      LowerBound->getType()->hasSignedIntegerRepresentation())
+                : llvm::ConstantInt::get(IntPtrTy, ConstLowerBound);
+        auto *LengthVal =
+            Length
+                ? Builder.CreateIntCast(
+                      EmitScalarExpr(Length), IntPtrTy,
+                      Length->getType()->hasSignedIntegerRepresentation())
+                : llvm::ConstantInt::get(IntPtrTy, ConstLength);
+        Idx = Builder.CreateAdd(LowerBoundVal, LengthVal, "lb_add_len",
+                                /*HasNUW=*/false,
+                                !getLangOpts().isSignedOverflowDefined());
+        if (Length && LowerBound) {
+          Idx = Builder.CreateSub(
+              Idx, llvm::ConstantInt::get(IntPtrTy, /*V=*/1), "idx_sub_1",
+              /*HasNUW=*/false, !getLangOpts().isSignedOverflowDefined());
+        }
+      } else
+        Idx = llvm::ConstantInt::get(IntPtrTy, ConstLength + ConstLowerBound);
+    } else {
+      // Idx = ArraySize - 1;
+      QualType ArrayTy = BaseTy->isPointerType()
+                             ? E->getBase()->IgnoreParenImpCasts()->getType()
+                             : BaseTy;
+      if (auto *VAT = C.getAsVariableArrayType(ArrayTy)) {
+        Length = VAT->getSizeExpr();
+        if (std::optional<llvm::APSInt> L = Length->getIntegerConstantExpr(C)) {
+          ConstLength = *L;
+          Length = nullptr;
+        }
+      } else {
+        auto *CAT = C.getAsConstantArrayType(ArrayTy);
+        assert(CAT && "unexpected type for array initializer");
+        ConstLength = CAT->getSize();
+      }
+      if (Length) {
+        auto *LengthVal = Builder.CreateIntCast(
+            EmitScalarExpr(Length), IntPtrTy,
+            Length->getType()->hasSignedIntegerRepresentation());
+        Idx = Builder.CreateSub(
+            LengthVal, llvm::ConstantInt::get(IntPtrTy, /*V=*/1), "len_sub_1",
+            /*HasNUW=*/false, !getLangOpts().isSignedOverflowDefined());
+      } else {
+        ConstLength = ConstLength.zextOrTrunc(PointerWidthInBits);
+        --ConstLength;
+        Idx = llvm::ConstantInt::get(IntPtrTy, ConstLength);
+      }
+    }
+  }
+  assert(Idx);
+
+  Address EltPtr = Address::invalid();
+  LValueBaseInfo BaseInfo;
+  TBAAAccessInfo TBAAInfo;
+  if (auto *VLA = getContext().getAsVariableArrayType(ResultExprTy)) {
+    // The base must be a pointer, which is not an aggregate.  Emit
+    // it.  It needs to be emitted first in case it's what captures
+    // the VLA bounds.
+    Address Base =
+        emitOMPArraySectionBase(*this, E->getBase(), BaseInfo, TBAAInfo,
+                                BaseTy, VLA->getElementType(), IsLowerBound);
+    // The element count here is the total number of non-VLA elements.
+    llvm::Value *NumElements = getVLASize(VLA).NumElts;
+
+    // Effectively, the multiply by the VLA size is part of the GEP.
+    // GEP indexes are signed, and scaling an index isn't permitted to
+    // signed-overflow, so we use the same semantics for our explicit
+    // multiply.  We suppress this if overflow is not undefined behavior.
+    if (getLangOpts().isSignedOverflowDefined())
+      Idx = Builder.CreateMul(Idx, NumElements);
+    else
+      Idx = Builder.CreateNSWMul(Idx, NumElements);
+    EltPtr = emitArraySubscriptGEP(*this, Base, Idx, VLA->getElementType(),
+                                   !getLangOpts().isSignedOverflowDefined(),
+                                   /*signedIndices=*/false, E->getExprLoc());
+  } else if (const Expr *Array = isSimpleArrayDecayOperand(E->getBase())) {
+    // If this is A[i] where A is an array, the frontend will have decayed the
+    // base to be a ArrayToPointerDecay implicit cast.  While correct, it is
+    // inefficient at -O0 to emit a "gep A, 0, 0" when codegen'ing it, then a
+    // "gep x, i" here.  Emit one "gep A, 0, i".
+    assert(Array->getType()->isArrayType() &&
+           "Array to pointer decay must have array source type!");
+    LValue ArrayLV;
+    // For simple multidimensional array indexing, set the 'accessed' flag for
+    // better bounds-checking of the base expression.
+    if (const auto *ASE = dyn_cast<ArraySubscriptExpr>(Array))
+      ArrayLV = EmitArraySubscriptExpr(ASE, /*Accessed*/ true);
+    else
+      ArrayLV = EmitLValue(Array);
+
+    // Propagate the alignment from the array itself to the result.
+    EltPtr = emitArraySubscriptGEP(
+        *this, ArrayLV.getAddress(*this), {CGM.getSize(CharUnits::Zero()), Idx},
+        ResultExprTy, !getLangOpts().isSignedOverflowDefined(),
+        /*signedIndices=*/false, E->getExprLoc());
+    BaseInfo = ArrayLV.getBaseInfo();
+    TBAAInfo = CGM.getTBAAInfoForSubobject(ArrayLV, ResultExprTy);
+  } else {
+    Address Base = emitOMPArraySectionBase(*this, E->getBase(), BaseInfo,
+                                           TBAAInfo, BaseTy, ResultExprTy,
+                                           IsLowerBound);
+    EltPtr = emitArraySubscriptGEP(*this, Base, Idx, ResultExprTy,
+                                   !getLangOpts().isSignedOverflowDefined(),
+                                   /*signedIndices=*/false, E->getExprLoc());
+  }
+
+  return MakeAddrLValue(EltPtr, ResultExprTy, BaseInfo, TBAAInfo);
+}
+
+LValue CodeGenFunction::EmitArraySectionExpr(const ArraySectionExpr *E,
+                                                bool IsLowerBound) {
+
+  assert(!E->isOpenACCArraySection() &&
+         "OpenACC Array section codegen not implemented");
+
+  QualType BaseTy = ArraySectionExpr::getBaseOriginalType(E->getBase());
   QualType ResultExprTy;
   if (auto *AT = getContext().getAsArrayType(BaseTy))
     ResultExprTy = AT->getElementType();

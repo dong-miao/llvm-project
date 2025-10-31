@@ -5029,10 +5029,18 @@ ExprResult Sema::ActOnArraySubscriptExpr(Scope *S, Expr *base,
                                          SourceLocation rbLoc) {
 
   if (base && !base->getType().isNull() &&
-      base->hasPlaceholderType(BuiltinType::OMPArraySection))
-    return ActOnOMPArraySectionExpr(base, lbLoc, ArgExprs.front(), SourceLocation(),
-                                    SourceLocation(), /*Length*/ nullptr,
-                                    /*Stride=*/nullptr, rbLoc);
+            base->hasPlaceholderType(BuiltinType::ArraySection)) {
+    auto *AS = cast<ArraySectionExpr>(base);
+    if (AS->isOMPArraySection())
+      return ActOnOMPArraySectionExpr(
+          base, lbLoc, ArgExprs.front(), SourceLocation(), SourceLocation(),
+          /*Length*/ nullptr,
+          /*Stride=*/nullptr, rbLoc);
+
+    return OpenACC().ActOnArraySectionExpr(base, lbLoc, ArgExprs.front(),
+                                           SourceLocation(), /*Length*/ nullptr,
+                                           rbLoc);
+  }
 
   // Since this might be a postfix expression, get rid of ParenListExprs.
   if (isa<ParenListExpr>(base)) {
@@ -18012,6 +18020,12 @@ Sema::VerifyIntegerConstantExpression(Expr *E, llvm::APSInt *Result,
     if (Converted.isInvalid())
       return Converted;
     E = Converted.get();
+    // The 'explicit' case causes us to get a RecoveryExpr.  Give up here so we
+    // don't try to evaluate it later. We also don't want to return the
+    // RecoveryExpr here, as it results in this call succeeding, thus callers of
+    // this function will attempt to use 'Value'.
+    if (isa<RecoveryExpr>(E))
+      return ExprError();
     if (!E->getType()->isIntegralOrUnscopedEnumerationType())
       return ExprError();
   } else if (!E->getType()->isIntegralOrUnscopedEnumerationType()) {

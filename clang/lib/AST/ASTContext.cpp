@@ -41,6 +41,7 @@
 #include "clang/AST/RawCommentList.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/StmtOpenACC.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
@@ -1372,6 +1373,13 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
     InitBuiltinType(OMPArraySectionTy, BuiltinType::OMPArraySection);
     InitBuiltinType(OMPArrayShapingTy, BuiltinType::OMPArrayShaping);
     InitBuiltinType(OMPIteratorTy, BuiltinType::OMPIterator);
+  }
+  // Placeholder type for OpenACC array sections.
+  if (LangOpts.OpenACC) {
+    // FIXME: Once we implement OpenACC array sections in Sema, this will either
+    // be combined with the OpenMP type, or given its own type. In the meantime,
+    // just use the OpenMP type so that parsing can work.
+    InitBuiltinType(ArraySectionTy, BuiltinType::ArraySection);
   }
   if (LangOpts.MatrixTypes)
     InitBuiltinType(IncompleteMatrixIdxTy, BuiltinType::IncompleteMatrixIdx);

@@ -29,6 +29,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/LambdaCapture.h"
 #include "clang/AST/NestedNameSpecifier.h"
+#include "clang/AST/OpenACCClause.h"
 #include "clang/AST/OpenMPClause.h"
 #include "clang/AST/RawCommentList.h"
 #include "clang/AST/TemplateName.h"
@@ -44,6 +45,7 @@
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/ObjCRuntime.h"
+#include "clang/Basic/OpenACCKinds.h"
 #include "clang/Basic/OpenCLOptions.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -4505,6 +4507,8 @@ void ASTWriter::AddToken(const Token &Tok, RecordDataImpl &Record) {
     case tok::annot_pragma_openmp:
     case tok::annot_pragma_openmp_end:
     case tok::annot_pragma_unused:
+    case tok::annot_pragma_openacc:
+    case tok::annot_pragma_openacc_end:
       break;
     default:
       llvm_unreachable("missing serialization code for annotation token");
@@ -7285,4 +7289,245 @@ void ASTRecordWriter::writeOMPChildren(OMPChildren *Data) {
     AddStmt(Data->getAssociatedStmt());
   for (unsigned I = 0, E = Data->getNumChildren(); I < E; ++I)
     AddStmt(Data->getChildren()[I]);
+}
+
+void ASTRecordWriter::writeOpenACCVarList(const OpenACCClauseWithVarList *C) {
+  writeUInt32(C->getVarList().size());
+  for (Expr *E : C->getVarList())
+    AddStmt(E);
+}
+
+void ASTRecordWriter::writeOpenACCIntExprList(ArrayRef<Expr *> Exprs) {
+  writeUInt32(Exprs.size());
+  for (Expr *E : Exprs)
+    AddStmt(E);
+}
+
+void ASTRecordWriter::writeOpenACCClause(const OpenACCClause *C) {
+  writeEnum(C->getClauseKind());
+  writeSourceLocation(C->getBeginLoc());
+  writeSourceLocation(C->getEndLoc());
+
+  switch (C->getClauseKind()) {
+  case OpenACCClauseKind::Default: {
+    const auto *DC = cast<OpenACCDefaultClause>(C);
+    writeSourceLocation(DC->getLParenLoc());
+    writeEnum(DC->getDefaultClauseKind());
+    return;
+  }
+  case OpenACCClauseKind::If: {
+    const auto *IC = cast<OpenACCIfClause>(C);
+    writeSourceLocation(IC->getLParenLoc());
+    AddStmt(const_cast<Expr*>(IC->getConditionExpr()));
+    return;
+  }
+  case OpenACCClauseKind::Self: {
+    const auto *SC = cast<OpenACCSelfClause>(C);
+    writeSourceLocation(SC->getLParenLoc());
+    writeBool(SC->hasConditionExpr());
+    if (SC->hasConditionExpr())
+      AddStmt(const_cast<Expr*>(SC->getConditionExpr()));
+    return;
+  }
+  case OpenACCClauseKind::NumGangs: {
+    const auto *NGC = cast<OpenACCNumGangsClause>(C);
+    writeSourceLocation(NGC->getLParenLoc());
+    writeUInt32(NGC->getIntExprs().size());
+    for (Expr *E : NGC->getIntExprs())
+      AddStmt(E);
+    return;
+  }
+  case OpenACCClauseKind::NumWorkers: {
+    const auto *NWC = cast<OpenACCNumWorkersClause>(C);
+    writeSourceLocation(NWC->getLParenLoc());
+    AddStmt(const_cast<Expr*>(NWC->getIntExpr()));
+    return;
+  }
+  case OpenACCClauseKind::VectorLength: {
+    const auto *NWC = cast<OpenACCVectorLengthClause>(C);
+    writeSourceLocation(NWC->getLParenLoc());
+    AddStmt(const_cast<Expr*>(NWC->getIntExpr()));
+    return;
+  }
+  case OpenACCClauseKind::Private: {
+    const auto *PC = cast<OpenACCPrivateClause>(C);
+    writeSourceLocation(PC->getLParenLoc());
+    writeOpenACCVarList(PC);
+    return;
+  }
+  case OpenACCClauseKind::FirstPrivate: {
+    const auto *FPC = cast<OpenACCFirstPrivateClause>(C);
+    writeSourceLocation(FPC->getLParenLoc());
+    writeOpenACCVarList(FPC);
+    return;
+  }
+  case OpenACCClauseKind::Attach: {
+    const auto *AC = cast<OpenACCAttachClause>(C);
+    writeSourceLocation(AC->getLParenLoc());
+    writeOpenACCVarList(AC);
+    return;
+  }
+  case OpenACCClauseKind::DevicePtr: {
+    const auto *DPC = cast<OpenACCDevicePtrClause>(C);
+    writeSourceLocation(DPC->getLParenLoc());
+    writeOpenACCVarList(DPC);
+    return;
+  }
+  case OpenACCClauseKind::NoCreate: {
+    const auto *NCC = cast<OpenACCNoCreateClause>(C);
+    writeSourceLocation(NCC->getLParenLoc());
+    writeOpenACCVarList(NCC);
+    return;
+  }
+  case OpenACCClauseKind::Present: {
+    const auto *PC = cast<OpenACCPresentClause>(C);
+    writeSourceLocation(PC->getLParenLoc());
+    writeOpenACCVarList(PC);
+    return;
+  }
+  case OpenACCClauseKind::Copy:
+  case OpenACCClauseKind::PCopy:
+  case OpenACCClauseKind::PresentOrCopy: {
+    const auto *CC = cast<OpenACCCopyClause>(C);
+    writeSourceLocation(CC->getLParenLoc());
+    writeOpenACCVarList(CC);
+    return;
+  }
+  case OpenACCClauseKind::CopyIn:
+  case OpenACCClauseKind::PCopyIn:
+  case OpenACCClauseKind::PresentOrCopyIn: {
+    const auto *CIC = cast<OpenACCCopyInClause>(C);
+    writeSourceLocation(CIC->getLParenLoc());
+    writeBool(CIC->isReadOnly());
+    writeOpenACCVarList(CIC);
+    return;
+  }
+  case OpenACCClauseKind::CopyOut:
+  case OpenACCClauseKind::PCopyOut:
+  case OpenACCClauseKind::PresentOrCopyOut: {
+    const auto *COC = cast<OpenACCCopyOutClause>(C);
+    writeSourceLocation(COC->getLParenLoc());
+    writeBool(COC->isZero());
+    writeOpenACCVarList(COC);
+    return;
+  }
+  case OpenACCClauseKind::Create:
+  case OpenACCClauseKind::PCreate:
+  case OpenACCClauseKind::PresentOrCreate: {
+    const auto *CC = cast<OpenACCCreateClause>(C);
+    writeSourceLocation(CC->getLParenLoc());
+    writeBool(CC->isZero());
+    writeOpenACCVarList(CC);
+    return;
+  }
+  case OpenACCClauseKind::Async: {
+    const auto *AC = cast<OpenACCAsyncClause>(C);
+    writeSourceLocation(AC->getLParenLoc());
+    writeBool(AC->hasIntExpr());
+    if (AC->hasIntExpr())
+      AddStmt(const_cast<Expr*>(AC->getIntExpr()));
+    return;
+  }
+  case OpenACCClauseKind::Wait: {
+    const auto *WC = cast<OpenACCWaitClause>(C);
+    writeSourceLocation(WC->getLParenLoc());
+    writeBool(WC->getDevNumExpr());
+    if (const Expr *DNE = WC->getDevNumExpr())
+      AddStmt(const_cast<Expr*>(DNE));
+    writeSourceLocation(WC->getQueuesLoc());
+
+    writeOpenACCIntExprList(WC->getQueueIdExprs());
+    return;
+  }
+  case OpenACCClauseKind::DeviceType:
+  case OpenACCClauseKind::DType: {
+    const auto *DTC = cast<OpenACCDeviceTypeClause>(C);
+    writeSourceLocation(DTC->getLParenLoc());
+    writeUInt32(DTC->getArchitectures().size());
+    for (const DeviceTypeArgument &Arg : DTC->getArchitectures()) {
+      writeBool(Arg.first);
+      if (Arg.first)
+        AddIdentifierRef(Arg.first);
+      writeSourceLocation(Arg.second);
+    }
+    return;
+  }
+  case OpenACCClauseKind::Reduction: {
+    const auto *RC = cast<OpenACCReductionClause>(C);
+    writeSourceLocation(RC->getLParenLoc());
+    writeEnum(RC->getReductionOp());
+    writeOpenACCVarList(RC);
+    return;
+  }
+  case OpenACCClauseKind::Seq:
+  case OpenACCClauseKind::Independent:
+  case OpenACCClauseKind::Auto:
+    // Nothing to do here, there is no additional information beyond the
+    // begin/end loc and clause kind.
+    return;
+  case OpenACCClauseKind::Collapse: {
+    const auto *CC = cast<OpenACCCollapseClause>(C);
+    writeSourceLocation(CC->getLParenLoc());
+    writeBool(CC->hasForce());
+    AddStmt(const_cast<Expr *>(CC->getLoopCount()));
+    return;
+  }
+  case OpenACCClauseKind::Tile: {
+    const auto *TC = cast<OpenACCTileClause>(C);
+    writeSourceLocation(TC->getLParenLoc());
+    writeUInt32(TC->getSizeExprs().size());
+    for (Expr *E : TC->getSizeExprs())
+      AddStmt(E);
+    return;
+  }
+  case OpenACCClauseKind::Gang: {
+    const auto *GC = cast<OpenACCGangClause>(C);
+    writeSourceLocation(GC->getLParenLoc());
+    writeUInt32(GC->getNumExprs());
+    for (unsigned I = 0; I < GC->getNumExprs(); ++I) {
+      writeEnum(GC->getExpr(I).first);
+      AddStmt(const_cast<Expr *>(GC->getExpr(I).second));
+    }
+    return;
+  }
+  case OpenACCClauseKind::Worker: {
+    const auto *WC = cast<OpenACCWorkerClause>(C);
+    writeSourceLocation(WC->getLParenLoc());
+    writeBool(WC->hasIntExpr());
+    if (WC->hasIntExpr())
+      AddStmt(const_cast<Expr *>(WC->getIntExpr()));
+    return;
+  }
+  case OpenACCClauseKind::Vector: {
+    const auto *VC = cast<OpenACCVectorClause>(C);
+    writeSourceLocation(VC->getLParenLoc());
+    writeBool(VC->hasIntExpr());
+    if (VC->hasIntExpr())
+      AddStmt(const_cast<Expr *>(VC->getIntExpr()));
+    return;
+  }
+
+  case OpenACCClauseKind::Finalize:
+  case OpenACCClauseKind::IfPresent:
+  case OpenACCClauseKind::NoHost:
+  case OpenACCClauseKind::UseDevice:
+  case OpenACCClauseKind::Delete:
+  case OpenACCClauseKind::Detach:
+  case OpenACCClauseKind::Device:
+  case OpenACCClauseKind::DeviceResident:
+  case OpenACCClauseKind::Host:
+  case OpenACCClauseKind::Link:
+  case OpenACCClauseKind::Bind:
+  case OpenACCClauseKind::DeviceNum:
+  case OpenACCClauseKind::DefaultAsync:
+  case OpenACCClauseKind::Invalid:
+    llvm_unreachable("Clause serialization not yet implemented");
+  }
+  llvm_unreachable("Invalid Clause Kind");
+}
+
+void ASTRecordWriter::writeOpenACCClauseList(
+    ArrayRef<const OpenACCClause *> Clauses) {
+  for (const OpenACCClause *Clause : Clauses)
+    writeOpenACCClause(Clause);
 }

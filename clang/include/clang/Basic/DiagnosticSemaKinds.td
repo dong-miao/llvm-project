@@ -10917,6 +10917,7 @@ def err_omp_declare_mapper_redefinition : Error<
 def err_omp_invalid_mapper: Error<
   "cannot find a valid user-defined mapper for type %0 with name %1">;
 def err_omp_array_section_use : Error<"OpenMP array section is not allowed here">;
+def err_array_section_use : Error<"%select{OpenACC sub-array|OpenMP array section}0 is not allowed here">;
 def err_omp_array_shaping_use : Error<"OpenMP array shaping operation is not allowed here">;
 def err_omp_iterator_use : Error<"OpenMP iterator is not allowed here">;
 def err_omp_typecheck_section_value : Error<
@@ -11982,4 +11983,177 @@ def err_wasm_builtin_arg_must_match_table_element_type : Error <
   "%ordinal0 argument must match the element type of the WebAssembly table in the %ordinal1 argument">;
 def err_wasm_builtin_arg_must_be_integer_type : Error <
   "%ordinal0 argument must be an integer">;
+
+// OpenACC diagnostics.
+def warn_acc_construct_unimplemented
+    : Warning<"OpenACC construct '%0' not yet implemented, pragma ignored">,
+      InGroup<SourceUsesOpenACC>;
+def warn_acc_clause_unimplemented
+    : Warning<"OpenACC clause '%0' not yet implemented, clause ignored">,
+      InGroup<SourceUsesOpenACC>;
+def err_acc_construct_appertainment
+    : Error<"OpenACC construct '%0' cannot be used here; it can only "
+            "be used in a statement context">;
+def err_acc_clause_appertainment
+    : Error<"OpenACC '%1' clause is not valid on '%0' directive">;
+def err_acc_duplicate_clause_disallowed
+    : Error<"OpenACC '%1' clause cannot appear more than once on a '%0' "
+            "directive">;
+def note_acc_previous_clause_here : Note<"previous clause is here">;
+def note_acc_previous_expr_here : Note<"previous expression is here">;
+def err_acc_branch_in_out_compute_construct
+    : Error<"invalid %select{branch|return|throw}0 %select{out of|into}1 "
+            "OpenACC Compute/Combined Construct">;
+def note_acc_branch_into_compute_construct
+    : Note<"invalid branch into OpenACC Compute/Combined Construct">;
+def note_acc_branch_out_of_compute_construct
+    : Note<"invalid branch out of OpenACC Compute/Combined Construct">;
+def warn_acc_if_self_conflict
+    : Warning<"OpenACC construct 'self' has no effect when an 'if' clause "
+              "evaluates to true">,
+      InGroup<DiagGroup<"openacc-self-if-potential-conflict">>;
+def err_acc_int_expr_requires_integer
+    : Error<"OpenACC %select{clause '%1'|directive '%2'|sub-array bound}0 "
+            "requires expression of integer type (%3 invalid)">;
+def err_acc_int_expr_incomplete_class_type
+    : Error<"OpenACC integer expression has incomplete class type %0">;
+def err_acc_int_expr_explicit_conversion
+    : Error<"OpenACC integer expression type %0 requires explicit conversion "
+            "to %1">;
+def note_acc_int_expr_conversion
+    : Note<"conversion to %select{integral|enumeration}0 type %1">;
+def err_acc_int_expr_multiple_conversions
+    : Error<"multiple conversions from expression type %0 to an integral type">;
+def err_acc_num_gangs_num_args
+    : Error<"%select{no|too many}0 integer expression arguments provided to "
+            "OpenACC 'num_gangs' "
+            "%select{|clause: '%1' directive expects maximum of %2, %3 were "
+            "provided}0">;
+def err_acc_not_a_var_ref
+    : Error<"OpenACC variable is not a valid variable name, sub-array, array "
+            "element,%select{| member of a composite variable,}0 or composite "
+            "variable member">;
+def err_acc_typecheck_subarray_value
+    : Error<"OpenACC sub-array subscripted value is not an array or pointer">;
+def err_acc_subarray_function_type
+    : Error<"OpenACC sub-array cannot be of function type %0">;
+def err_acc_subarray_incomplete_type
+    : Error<"OpenACC sub-array base is of incomplete type %0">;
+def err_acc_subarray_no_length
+    : Error<"OpenACC sub-array length is unspecified and cannot be inferred "
+            "because the subscripted value is %select{not an array|an array of "
+            "unknown bound}0">;
+def err_acc_subarray_negative
+    : Error<"OpenACC sub-array %select{lower bound|length}0 evaluated to "
+            "negative value %1">;
+def err_acc_subarray_out_of_range
+    : Error<"OpenACC sub-array %select{lower bound|length}0 evaluated to a "
+            "value (%1) that would be out of the range of the subscripted "
+            "array size of %2">;
+def err_acc_subarray_base_plus_length_out_of_range
+    : Error<"OpenACC sub-array specified range [%0:%1] would be out of the "
+            "range of the subscripted array size of %2">;
+def warn_acc_deprecated_alias_name
+    : Warning<"OpenACC clause name '%0' is a deprecated clause name and is "
+              "now an alias for '%1'">,
+      InGroup<DiagGroup<"openacc-deprecated-clause-alias">>;
+def err_acc_var_not_pointer_type
+    : Error<"expected pointer in '%0' clause, type is %1">;
+def note_acc_expected_pointer_var : Note<"expected variable of pointer type">;
+def err_acc_clause_after_device_type
+    : Error<"OpenACC clause '%0' may not follow a '%1' clause in a "
+            "'%2' construct">;
+def err_acc_clause_cannot_combine
+    : Error<"OpenACC clause '%0' may not appear on the same construct as a "
+            "'%1' clause on a '%2' construct">;
+def err_acc_reduction_num_gangs_conflict
+    : Error<"OpenACC '%1' clause %select{|with more than 1 argument }0may not "
+            "appear on a '%2' construct "
+            "with a '%3' clause%select{ with more than 1 argument|}0">;
+def err_acc_reduction_type
+    : Error<"OpenACC 'reduction' variable must be of scalar type, sub-array, or a "
+            "composite of scalar types;%select{| sub-array base}1 type is %0">;
+def err_acc_reduction_composite_type
+    : Error<"OpenACC 'reduction' variable must be a composite of scalar types; "
+            "%1 %select{is not a class or struct|is incomplete|is not an "
+            "aggregate}0">;
+def err_acc_reduction_composite_member_type :Error<
+    "OpenACC 'reduction' composite variable must not have non-scalar field">;
+def note_acc_reduction_composite_member_loc : Note<"invalid field is here">;
+def err_acc_loop_not_for_loop
+    : Error<"OpenACC '%0' construct can only be applied to a 'for' loop">;
+def note_acc_construct_here : Note<"'%0' construct is here">;
+def err_acc_loop_spec_conflict
+    : Error<"OpenACC clause '%0' on '%1' construct conflicts with previous "
+            "data dependence clause">;
+def err_acc_collapse_loop_count
+    : Error<"OpenACC 'collapse' clause loop count must be a %select{constant "
+            "expression|positive integer value, evaluated to %1}0">;
+def err_acc_size_expr_value
+    : Error<
+          "OpenACC 'tile' clause size expression must be %select{an asterisk "
+          "or a constant expression|positive integer value, evaluated to %1}0">;
+def err_acc_invalid_in_loop
+    : Error<"%select{OpenACC '%3' construct|while loop|do loop}0 cannot appear "
+            "in intervening code of a '%1' with a '%2' clause">;
+def note_acc_active_clause_here
+    : Note<"active '%0' clause defined here">;
+def err_acc_clause_multiple_loops
+    : Error<"more than one for-loop in a loop associated with OpenACC '%0' "
+            "construct with a '%1' clause">;
+def err_acc_insufficient_loops
+    : Error<"'%0' clause specifies a loop count greater than the number "
+            "of available loops">;
+def err_acc_intervening_code
+    : Error<"inner loops must be tightly nested inside a '%0' clause on "
+            "a '%1' construct">;
+def err_acc_gang_multiple_elt
+    : Error<"OpenACC 'gang' clause may have at most one %select{unnamed or "
+            "'num'|'dim'|'static'}0 argument">;
+def err_acc_int_arg_invalid
+    : Error<"'%0' argument on '%1' clause is not permitted on a%select{|n "
+            "orphaned}2 '%3' construct%select{| associated with a '%5' compute "
+            "construct}4">;
+def err_acc_gang_dim_value
+    : Error<"argument to 'gang' clause dimension must be %select{a constant "
+            "expression|1, 2, or 3: evaluated to %1}0">;
+def err_acc_num_arg_conflict
+    : Error<"'%0' argument to '%1' clause not allowed on a '%2' "
+            "construct%select{| associated with a '%4' construct}3 that has a "
+            "'%5' clause">;
+def err_acc_num_arg_conflict_reverse
+    : Error<"'%0' clause not allowed on a 'kernels loop' construct that "
+            "has a '%1' clause with a%select{n| 'num'}2 argument">;
+def err_acc_clause_in_clause_region
+    : Error<"loop with a '%0' clause may not exist in the region of a '%1' "
+            "clause%select{| on a '%3' construct}2">;
+def err_acc_gang_reduction_conflict
+    : Error<"%select{OpenACC 'gang' clause with a 'dim' value greater than "
+            "1|OpenACC 'reduction' clause}0 cannot "
+            "appear on the same '%1' construct as a %select{'reduction' "
+            "clause|'gang' clause with a 'dim' value greater than 1}0">;
+def err_acc_gang_reduction_numgangs_conflict
+    : Error<"OpenACC '%0' clause cannot appear on the same '%2' construct as a "
+            "'%1' clause %select{inside a compute construct with a|and a}3 "
+            "'num_gangs' clause with more than one argument">;
+
+    def err_reduction_op_mismatch
+    : Error<"OpenACC 'reduction' variable must have the same operator in all "
+            "nested constructs (%0 vs %1)">;
+def err_acc_loop_variable_type
+    : Error<"loop variable of loop associated with an OpenACC '%0' construct "
+            "must be of integer, pointer, or random-access-iterator type (is "
+            "%1)">;
+def err_acc_loop_variable
+    : Error<"OpenACC '%0' construct must have initialization clause in "
+            "canonical form ('var = init' or 'T var = init')">;
+def err_acc_loop_terminating_condition
+    : Error<"OpenACC '%0' construct must have a terminating condition">;
+def err_acc_loop_not_monotonic
+    : Error<"OpenACC '%0' variable must monotonically increase or decrease "
+            "('++', '--', or compound assignment)">;
+
+// AMDGCN builtins diagnostics
+def err_amdgcn_global_load_lds_size_invalid_value : Error<"invalid size value">;
+def note_amdgcn_global_load_lds_size_valid_value : Note<"size must be 1, 2, or 4">;
 } // end of sema component.

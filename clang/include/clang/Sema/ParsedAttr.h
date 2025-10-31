@@ -670,6 +670,7 @@ public:
   ~AttributeFactory();
 };
 
+class ParsedAttributesView;
 class AttributePool {
   friend class AttributeFactory;
   friend class ParsedAttributes;
@@ -723,6 +724,10 @@ public:
     takePool(pool);
     pool.Attrs.clear();
   }
+
+  /// Removes the attributes from \c List, which are owned by \c Pool, and adds
+  /// them at the end of this \c AttributePool.
+  void takeFrom(ParsedAttributesView &List, AttributePool &Pool);
 
   ParsedAttr *create(IdentifierInfo *attrName, SourceRange attrRange,
                      IdentifierInfo *scopeName, SourceLocation scopeLoc,
@@ -806,6 +811,7 @@ public:
 };
 
 class ParsedAttributesView {
+  friend class AttributePool;
   using VecTy = llvm::SmallVector<ParsedAttr *>;
   using SizeType = decltype(std::declval<VecTy>().size());
 

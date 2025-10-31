@@ -581,6 +581,12 @@ void ASTStmtWriter::VisitConstantExpr(ConstantExpr *E) {
   Code = serialization::EXPR_CONSTANT;
 }
 
+void ASTStmtWriter::VisitOpenACCAsteriskSizeExpr(OpenACCAsteriskSizeExpr *E) {
+  VisitExpr(E);
+  Record.AddSourceLocation(E->getLocation());
+  Code = serialization::EXPR_OPENACC_ASTERISK_SIZE;
+}
+
 void ASTStmtWriter::VisitSYCLUniqueStableNameExpr(SYCLUniqueStableNameExpr *E) {
   VisitExpr(E);
 
@@ -824,6 +830,17 @@ void ASTStmtWriter::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   Record.AddSourceLocation(E->getColonLocSecond());
   Record.AddSourceLocation(E->getRBracketLoc());
   Code = serialization::EXPR_OMP_ARRAY_SECTION;
+}
+
+void ASTStmtWriter::VisitArraySectionExpr(ArraySectionExpr *E) {
+  VisitExpr(E);
+  Record.writeEnum(E->ASType);
+  Record.AddStmt(E->getBase());
+  Record.AddStmt(E->getLowerBound());
+  Record.AddStmt(E->getLength());
+  Record.AddSourceLocation(E->getColonLocFirst());
+  Record.AddSourceLocation(E->getRBracketLoc());
+  Code = serialization::EXPR_ARRAY_SECTION;
 }
 
 void ASTStmtWriter::VisitOMPArrayShapingExpr(OMPArrayShapingExpr *E) {
@@ -2709,6 +2726,42 @@ void ASTStmtWriter::VisitOMPTargetParallelGenericLoopDirective(
     OMPTargetParallelGenericLoopDirective *D) {
   VisitOMPLoopDirective(D);
   Code = serialization::STMT_OMP_TARGET_PARALLEL_GENERIC_LOOP_DIRECTIVE;
+}
+
+//===----------------------------------------------------------------------===//
+// OpenACC Constructs/Directives.
+//===----------------------------------------------------------------------===//
+void ASTStmtWriter::VisitOpenACCConstructStmt(OpenACCConstructStmt *S) {
+  Record.push_back(S->clauses().size());
+  Record.writeEnum(S->Kind);
+  Record.AddSourceRange(S->Range);
+  Record.AddSourceLocation(S->DirectiveLoc);
+  Record.writeOpenACCClauseList(S->clauses());
+}
+
+void ASTStmtWriter::VisitOpenACCAssociatedStmtConstruct(
+    OpenACCAssociatedStmtConstruct *S) {
+  VisitOpenACCConstructStmt(S);
+  Record.AddStmt(S->getAssociatedStmt());
+}
+
+void ASTStmtWriter::VisitOpenACCComputeConstruct(OpenACCComputeConstruct *S) {
+  VisitStmt(S);
+  VisitOpenACCAssociatedStmtConstruct(S);
+  Code = serialization::STMT_OPENACC_COMPUTE_CONSTRUCT;
+}
+
+void ASTStmtWriter::VisitOpenACCLoopConstruct(OpenACCLoopConstruct *S) {
+  VisitStmt(S);
+  VisitOpenACCAssociatedStmtConstruct(S);
+  Record.writeEnum(S->getParentComputeConstructKind());
+  Code = serialization::STMT_OPENACC_LOOP_CONSTRUCT;
+}
+
+void ASTStmtWriter::VisitOpenACCCombinedConstruct(OpenACCCombinedConstruct *S) {
+  VisitStmt(S);
+  VisitOpenACCAssociatedStmtConstruct(S);
+  Code = serialization::STMT_OPENACC_COMBINED_CONSTRUCT;
 }
 
 //===----------------------------------------------------------------------===//

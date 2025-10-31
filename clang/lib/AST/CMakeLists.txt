@@ -96,6 +96,7 @@ add_clang_library(clangAST
   NSAPI.cpp
   ODRDiagsEmitter.cpp
   ODRHash.cpp
+  OpenACCClause.cpp
   OpenMPClause.cpp
   OSLog.cpp
   ParentMap.cpp
@@ -111,6 +112,7 @@ add_clang_library(clangAST
   StmtCXX.cpp
   StmtIterator.cpp
   StmtObjC.cpp
+  StmtOpenACC.cpp
   StmtOpenMP.cpp
   StmtPrinter.cpp
   StmtProfile.cpp

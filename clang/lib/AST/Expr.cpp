@@ -3607,6 +3607,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
   case ConceptSpecializationExprClass:
   case RequiresExprClass:
   case SYCLUniqueStableNameExprClass:
+  case OpenACCAsteriskSizeExprClass:
     // These never have a side-effect.
     return false;
 
@@ -3667,6 +3668,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
   case ArraySubscriptExprClass:
   case MatrixSubscriptExprClass:
   case OMPArraySectionExprClass:
+  case ArraySectionExprClass:
   case OMPArrayShapingExprClass:
   case OMPIteratorExprClass:
   case MemberExprClass:
@@ -5032,6 +5034,34 @@ QualType OMPArraySectionExpr::getBaseOriginalType(const Expr *Base) {
   return OriginalTy;
 }
 
+QualType ArraySectionExpr::getBaseOriginalType(const Expr *Base) {
+  unsigned ArraySectionCount = 0;
+  while (auto *OASE = dyn_cast<ArraySectionExpr>(Base->IgnoreParens())) {
+    Base = OASE->getBase();
+    ++ArraySectionCount;
+  }
+  while (auto *ASE =
+             dyn_cast<ArraySubscriptExpr>(Base->IgnoreParenImpCasts())) {
+    Base = ASE->getBase();
+    ++ArraySectionCount;
+  }
+  Base = Base->IgnoreParenImpCasts();
+  auto OriginalTy = Base->getType();
+  if (auto *DRE = dyn_cast<DeclRefExpr>(Base))
+    if (auto *PVD = dyn_cast<ParmVarDecl>(DRE->getDecl()))
+      OriginalTy = PVD->getOriginalType().getNonReferenceType();
+
+  for (unsigned Cnt = 0; Cnt < ArraySectionCount; ++Cnt) {
+    if (OriginalTy->isAnyPointerType())
+      OriginalTy = OriginalTy->getPointeeType();
+    else {
+      assert (OriginalTy->isArrayType());
+      OriginalTy = OriginalTy->castAsArrayTypeUnsafe()->getElementType();
+    }
+  }
+  return OriginalTy;
+}
+
 RecoveryExpr::RecoveryExpr(ASTContext &Ctx, QualType T, SourceLocation BeginLoc,
                            SourceLocation EndLoc, ArrayRef<Expr *> SubExprs)
     : Expr(RecoveryExprClass, T.getNonReferenceType(),
@@ -5238,4 +5268,14 @@ OMPIteratorExpr *OMPIteratorExpr::CreateEmpty(const ASTContext &Context,
           NumIterators * static_cast<int>(RangeLocOffset::Total), NumIterators),
       alignof(OMPIteratorExpr));
   return new (Mem) OMPIteratorExpr(EmptyShell(), NumIterators);
+}
+
+OpenACCAsteriskSizeExpr *OpenACCAsteriskSizeExpr::Create(const ASTContext &C,
+                                                         SourceLocation Loc) {
+  return new (C) OpenACCAsteriskSizeExpr(Loc, C.IntTy);
+}
+
+OpenACCAsteriskSizeExpr *
+OpenACCAsteriskSizeExpr::CreateEmpty(const ASTContext &C) {
+  return new (C) OpenACCAsteriskSizeExpr({}, C.IntTy);
 }

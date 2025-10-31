@@ -435,6 +435,15 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
   case Stmt::OMPParallelMaskedDirectiveClass:
     EmitOMPParallelMaskedDirective(cast<OMPParallelMaskedDirective>(*S));
     break;
+  case Stmt::OpenACCComputeConstructClass:
+    EmitOpenACCComputeConstruct(cast<OpenACCComputeConstruct>(*S));
+    break;
+  case Stmt::OpenACCLoopConstructClass:
+    EmitOpenACCLoopConstruct(cast<OpenACCLoopConstruct>(*S));
+    break;
+  case Stmt::OpenACCCombinedConstructClass:
+    EmitOpenACCCombinedConstruct(cast<OpenACCCombinedConstruct>(*S));
+    break;
   }
 }
 

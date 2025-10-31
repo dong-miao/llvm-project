@@ -7711,6 +7711,12 @@ static void visitLocalsRetainedByReferenceBinding(IndirectLocalPath &Path,
                                      Visit, true, EnableLifetimeWarnings);
     break;
   }
+  case Stmt::ArraySectionExprClass: {
+    visitLocalsRetainedByInitializer(Path,
+                                     cast<ArraySectionExpr>(Init)->getBase(),
+                                     Visit, true, EnableLifetimeWarnings);
+    break;
+  }
 
   case Stmt::ConditionalOperatorClass:
   case Stmt::BinaryConditionalOperatorClass: {

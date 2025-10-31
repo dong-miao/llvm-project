@@ -146,6 +146,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::MSPropertyRefExprClass:
   case Expr::MSPropertySubscriptExprClass:
   case Expr::OMPArraySectionExprClass:
+  case Expr::ArraySectionExprClass:
   case Expr::OMPArrayShapingExprClass:
   case Expr::OMPIteratorExprClass:
     return Cl::CL_LValue;
@@ -443,6 +444,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CoyieldExprClass:
     return ClassifyInternal(Ctx, cast<CoroutineSuspendExpr>(E)->getResumeExpr());
   case Expr::SYCLUniqueStableNameExprClass:
+  case Expr::OpenACCAsteriskSizeExprClass:
     return Cl::CL_PRValue;
     break;
 

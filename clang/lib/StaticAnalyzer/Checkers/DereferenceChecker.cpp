@@ -196,6 +196,14 @@ void DereferenceChecker::reportBug(DerefKind K, ProgramStateRef State,
     os << DerefStr1;
     break;
   }
+  case Stmt::ArraySectionExprClass: {
+    os << "Array access";
+    const ArraySectionExpr *AE = cast<ArraySectionExpr>(S);
+    AddDerefSource(os, Ranges, AE->getBase()->IgnoreParenCasts(),
+                   State.get(), N->getLocationContext());
+    os << DerefStr1;
+    break;
+  }
   case Stmt::UnaryOperatorClass: {
     os << BT->getDescription();
     const UnaryOperator *U = cast<UnaryOperator>(S);

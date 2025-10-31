@@ -50,6 +50,7 @@ struct {
   void Visit(QualType T);
   void Visit(const Decl *D);
   void Visit(const CXXCtorInitializer *Init);
+  void Visit(const OpenACCClause *C);
   void Visit(const OMPClause *C);
   void Visit(const BlockDecl::Capture &C);
   void Visit(const GenericSelectionExpr::ConstAssociation &A);
@@ -210,6 +211,14 @@ public:
       getNodeDelegate().Visit(C);
       if (C.hasCopyExpr())
         Visit(C.getCopyExpr());
+    });
+  }
+
+  void Visit(const OpenACCClause *C) {
+    getNodeDelegate().AddChild([=] {
+      getNodeDelegate().Visit(C);
+      for (const auto *S : C->children())
+        Visit(S);
     });
   }
 
@@ -714,6 +723,11 @@ public:
   }
 
   void VisitOMPExecutableDirective(const OMPExecutableDirective *Node) {
+    for (const auto *C : Node->clauses())
+      Visit(C);
+  }
+
+  void VisitOpenACCConstructStmt(const OpenACCConstructStmt *Node) {
     for (const auto *C : Node->clauses())
       Visit(C);
   }

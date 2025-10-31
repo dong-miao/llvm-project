@@ -359,6 +359,123 @@ void TextNodeDumper::Visit(const OMPClause *C) {
     OS << " <implicit>";
 }
 
+void TextNodeDumper::VisitOpenACCAsteriskSizeExpr(
+    const OpenACCAsteriskSizeExpr *E) {
+  // Nothing to do here, only location exists, and that is printed elsewhere.
+}
+
+void TextNodeDumper::Visit(const OpenACCClause *C) {
+  if (!C) {
+    ColorScope Color(OS, ShowColors, NullColor);
+    OS << "<<<NULL>>> OpenACCClause";
+    return;
+  }
+  {
+    ColorScope Color(OS, ShowColors, AttrColor);
+    OS << C->getClauseKind();
+
+    // Handle clauses with parens for types that have no children, likely
+    // because there is no sub expression.
+    switch (C->getClauseKind()) {
+    case OpenACCClauseKind::Default:
+      OS << '(' << cast<OpenACCDefaultClause>(C)->getDefaultClauseKind() << ')';
+      break;
+    case OpenACCClauseKind::Async:
+    case OpenACCClauseKind::Auto:
+    case OpenACCClauseKind::Attach:
+    case OpenACCClauseKind::Copy:
+    case OpenACCClauseKind::PCopy:
+    case OpenACCClauseKind::PresentOrCopy:
+    case OpenACCClauseKind::If:
+    case OpenACCClauseKind::Independent:
+    case OpenACCClauseKind::DevicePtr:
+    case OpenACCClauseKind::FirstPrivate:
+    case OpenACCClauseKind::NoCreate:
+    case OpenACCClauseKind::NumGangs:
+    case OpenACCClauseKind::NumWorkers:
+    case OpenACCClauseKind::Present:
+    case OpenACCClauseKind::Private:
+    case OpenACCClauseKind::Self:
+    case OpenACCClauseKind::Seq:
+    case OpenACCClauseKind::Tile:
+    case OpenACCClauseKind::Worker:
+    case OpenACCClauseKind::Vector:
+    case OpenACCClauseKind::VectorLength:
+      // The condition expression will be printed as a part of the 'children',
+      // but print 'clause' here so it is clear what is happening from the dump.
+      OS << " clause";
+      break;
+    case OpenACCClauseKind::Gang: {
+      OS << " clause";
+      // print the list of all GangKinds, so that there is some sort of
+      // relationship to the expressions listed afterwards.
+      auto *GC = cast<OpenACCGangClause>(C);
+
+      for (unsigned I = 0; I < GC->getNumExprs(); ++I) {
+        OS << " " << GC->getExpr(I).first;
+      }
+      break;
+    }
+    case OpenACCClauseKind::Collapse:
+      OS << " clause";
+      if (cast<OpenACCCollapseClause>(C)->hasForce())
+        OS << ": force";
+      break;
+
+    case OpenACCClauseKind::CopyIn:
+    case OpenACCClauseKind::PCopyIn:
+    case OpenACCClauseKind::PresentOrCopyIn:
+      OS << " clause";
+      if (cast<OpenACCCopyInClause>(C)->isReadOnly())
+        OS << " : readonly";
+      break;
+    case OpenACCClauseKind::CopyOut:
+    case OpenACCClauseKind::PCopyOut:
+    case OpenACCClauseKind::PresentOrCopyOut:
+      OS << " clause";
+      if (cast<OpenACCCopyOutClause>(C)->isZero())
+        OS << " : zero";
+      break;
+    case OpenACCClauseKind::Create:
+    case OpenACCClauseKind::PCreate:
+    case OpenACCClauseKind::PresentOrCreate:
+      OS << " clause";
+      if (cast<OpenACCCreateClause>(C)->isZero())
+        OS << " : zero";
+      break;
+    case OpenACCClauseKind::Wait:
+      OS << " clause";
+      if (cast<OpenACCWaitClause>(C)->hasDevNumExpr())
+        OS << " has devnum";
+      if (cast<OpenACCWaitClause>(C)->hasQueuesTag())
+        OS << " has queues tag";
+      break;
+    case OpenACCClauseKind::DeviceType:
+    case OpenACCClauseKind::DType:
+      OS << "(";
+      llvm::interleaveComma(
+          cast<OpenACCDeviceTypeClause>(C)->getArchitectures(), OS,
+          [&](const DeviceTypeArgument &Arch) {
+            if (Arch.first == nullptr)
+              OS << "*";
+            else
+              OS << Arch.first->getName();
+          });
+      OS << ")";
+      break;
+    case OpenACCClauseKind::Reduction:
+      OS << " clause Operator: "
+         << cast<OpenACCReductionClause>(C)->getReductionOp();
+      break;
+    default:
+      // Nothing to do here.
+      break;
+    }
+  }
+  dumpPointer(C);
+  dumpSourceRange(SourceRange(C->getBeginLoc(), C->getEndLoc()));
+}
+
 void TextNodeDumper::Visit(const GenericSelectionExpr::ConstAssociation &A) {
   const TypeSourceInfo *TSI = A.getTypeSourceInfo();
   if (TSI) {
@@ -2599,4 +2716,20 @@ void TextNodeDumper::VisitHLSLBufferDecl(const HLSLBufferDecl *D) {
   else
     OS << " tbuffer";
   dumpName(D);
+}
+
+void TextNodeDumper::VisitOpenACCConstructStmt(const OpenACCConstructStmt *S) {
+  OS << " " << S->getDirectiveKind();
+}
+void TextNodeDumper::VisitOpenACCLoopConstruct(const OpenACCLoopConstruct *S) {
+
+  if (S->isOrphanedLoopConstruct())
+    OS << " <orphan>";
+  else
+    OS << " parent: " << S->getParentComputeConstructKind();
+}
+
+void TextNodeDumper::VisitOpenACCCombinedConstruct(
+    const OpenACCCombinedConstruct *S) {
+  OS << " " << S->getDirectiveKind();
 }

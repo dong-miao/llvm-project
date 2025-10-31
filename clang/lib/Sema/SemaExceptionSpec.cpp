@@ -1313,6 +1313,7 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
   case Expr::ArraySubscriptExprClass:
   case Expr::MatrixSubscriptExprClass:
   case Expr::OMPArraySectionExprClass:
+  case Expr::ArraySectionExprClass:
   case Expr::OMPArrayShapingExprClass:
   case Expr::OMPIteratorExprClass:
   case Expr::BinaryOperatorClass:
@@ -1420,6 +1421,9 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
     llvm_unreachable("Invalid class for expression");
 
     // Most statements can throw if any substatement can throw.
+  case Stmt::OpenACCComputeConstructClass:
+  case Stmt::OpenACCLoopConstructClass:
+  case Stmt::OpenACCCombinedConstructClass:
   case Stmt::AttributedStmtClass:
   case Stmt::BreakStmtClass:
   case Stmt::CapturedStmtClass:
@@ -1603,6 +1607,8 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
   }
 
   case Stmt::SYCLUniqueStableNameExprClass:
+    return CT_Cannot;
+  case Stmt::OpenACCAsteriskSizeExprClass:
     return CT_Cannot;
   case Stmt::NoStmtClass:
     llvm_unreachable("Invalid class for statement");
